@@ -31,6 +31,20 @@ Focused tests:
 
 The full go test ./... command may depend on host-specific process inspection; see its output on the machine running the tests.
 
+## Versioned container releases
+
+The container workflow publishes two kinds of image tags:
+
+- every push to `main` -> `latest` plus a `sha-<commit>` tag;
+- every `v*` git tag -> the version without the leading `v`, e.g. tag
+  `v1.9.12-sleepy.1` publishes `ghcr.io/tahsinarafat/9router-go-sleepy:1.9.12-sleepy.1`.
+  A tag push never rewrites `latest`.
+
+Fork versions use the `-sleepy.N` suffix on top of the upstream baseline
+(VERSION file) they were cut from, so `1.9.12-sleepy.1` reads as "upstream
+1.9.12 plus the first set of fork changes". Pin server deployments to the
+versioned tag and treat `latest` as the floating convenience tag.
+
 ## Syncing and reporting issues
 
 Before syncing a Go change, inspect the corresponding upstream JavaScript implementation and tests, then port the external behavior while following the Go project's provider-isolation and engineering rules in AGENTS.md. When reporting a bug that also affects upstream, include a reproducible report there as well. Fork-only issues and changes belong in this repository.

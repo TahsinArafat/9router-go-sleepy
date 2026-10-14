@@ -19,11 +19,15 @@ The upstream projects and their contributors retain ownership of their work. The
 
 ### OpenCode v2 free-tier compatibility (decolua/9router#4842)
 
-Ported the behavior of decolua/9router PR #4842 to the Go executor. The free OpenCode lane now targets /inference/v1, uses the v2 client User-Agent and session headers, omits the rejected x-opencode-request header, and declares OpenCode's exact read and shell tool fingerprints. Caller tools that conflict with those fingerprint names are aliased and restored in responses; missing fingerprint tools receive a system instruction identifying them as placeholders. The paid opencode-zen lane remains separate and retains its /zen/v1 behavior.
+Ported the behavior of decolua/9router PR #4842 to the Go executor. The free OpenCode lane now targets /inference/v1, uses the v2 client User-Agent and session headers, omits the rejected x-opencode-request header, and declares OpenCode's exact read and shell tool fingerprints. Caller tools that conflict with those fingerprint names are aliased and restored in responses; missing fingerprint tools receive a system instruction identifying them as placeholders. Free opencode-zen models follow the same /inference/v1 prefix on their lane while paid zen models keep /zen/v1; the classification is catalog-driven (providers.IsOpencodeFreeTierModel), not suffix matching. Proposed upstream as luqman-v1/9router-go#319.
+
+### Harness-body canonicalization for the OpenCode v2 gate (fork follow-up)
+
+Direct API calls through the fork returned 200 while harness clients (Claude Code-style capitalised tools, forced tool_choice, schema-less tool declarations, cache_control keys, nameless prior function_call items) hit 403 FreeTierError: the v2 gate inspects more of the request than the plain fingerprint covers. The v2 pass now canonicalizes whatever the caller sends into the form the gate accepts — tools rebuilt into the canonical shape with default object schemas, tool_choice "none"/object forms collapsed to "auto", forced choices retargeted or dropped per the upstream rules, and upstream's forceAutoToolChoiceModels quirk ported for confirmed auto-only models. The goal is that the caller's harness never decides between 200 and 403.
 
 Focused tests:
 
-    go test ./internal/proxy ./internal/proxy/executor ./internal/translator
+    go test ./internal/providers/... ./internal/proxy/... ./internal/translator/... -count=1
 
 The full go test ./... command may depend on host-specific process inspection; see its output on the machine running the tests.
 

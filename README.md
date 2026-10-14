@@ -1,19 +1,21 @@
 <div align="center">
 
-# 9router-go — FREE AI Router & Token Saver (Single Binary)
+# 9router-go-sleepy — AI Router & Token Saver (Go)
+
+**A personal, documented fork of luqman-v1/9router-go, itself the Go companion to decolua/9router.**
+
+This repository tracks the original Go project and carries selective Go ports of fixes from the JavaScript/TypeScript upstream. It is an independent fork, not an official release or project endorsed by either upstream maintainer. See [FORK.md](FORK.md) for attribution, sync policy, and fork-specific changes.
 
 **Never stop coding. Save 20-40% tokens with RTK + auto-fallback to FREE & cheap AI models.**
 
 **Connect Claude Code, Cursor, Antigravity, Codex, Gemini, OpenCode, Cline, OpenClaw... to 40+ AI providers & 100+ models — no Node.js needed at runtime.**
 
-[![CI](https://github.com/luqman-v1/9router-go/actions/workflows/ci.yml/badge.svg)](https://github.com/luqman-v1/9router-go/actions/workflows/ci.yml)
-[![Release](https://github.com/luqman-v1/9router-go/actions/workflows/release.yml/badge.svg)](https://github.com/luqman-v1/9router-go/actions/workflows/release.yml)
-[![GitHub release](https://img.shields.io/github/v/release/luqman-v1/9router-go)](https://github.com/luqman-v1/9router-go/releases/latest)
-[![License](https://img.shields.io/github/license/luqman-v1/9router-go)](https://github.com/luqman-v1/9router-go/blob/main/LICENSE)
-[![GitHub All Releases](https://img.shields.io/github/downloads/luqman-v1/9router-go/total.svg)](https://github.com/luqman-v1/9router-go/releases)
+[![CI](https://github.com/TahsinArafat/9router-go-sleepy/actions/workflows/ci.yml/badge.svg)](https://github.com/TahsinArafat/9router-go-sleepy/actions/workflows/ci.yml)
+[![Release](https://github.com/TahsinArafat/9router-go-sleepy/actions/workflows/release.yml/badge.svg)](https://github.com/TahsinArafat/9router-go-sleepy/actions/workflows/release.yml)
+[![License](https://img.shields.io/github/license/TahsinArafat/9router-go-sleepy)](https://github.com/TahsinArafat/9router-go-sleepy/blob/main/LICENSE)
 [![Telegram](https://img.shields.io/badge/Telegram-Join%20Group-26A5E1?logo=telegram&logoColor=white)](https://luqman-v1.github.io/9router-go/tg)
 
-[🚀 Quick Start](#-quick-start) • [💡 Features](#-key-features) • [⚙️ Setup](#-setup-guide) • [🔄 Share DB with 9Router](#-sharing-a-database-with-9router) • [🌐 Upstream](https://github.com/decolua/9router)
+[🚀 Quick Start](#-quick-start) • [💡 Features](#-key-features) • [⚙️ Setup](#-setup-guide) • [🔄 Share DB with 9Router](#-sharing-a-database-with-9router) • [Fork notes](FORK.md) • [🌐 Upstream](https://github.com/decolua/9router)
 
 </div>
 
@@ -75,10 +77,12 @@ Result: Never stop coding, minimal cost + 20-40% token savings via RTK
 
 ## ⚡ Quick Start
 
-**1. Install (one line):**
+**1. Install:**
+
+This fork does not publish release binaries yet. To use its fork-specific changes, build from source using the steps in [Build from source](#build-from-source). The upstream project's current release binaries are also available if you only need the upstream version.
 
 ```bash
-# macOS / Linux
+# Upstream macOS / Linux release binary (does not include fork-only changes)
 curl -fsSL https://raw.githubusercontent.com/luqman-v1/9router-go/main/install.sh | bash
 ```
 
@@ -163,7 +167,7 @@ docker run -d --name 9router-go --restart unless-stopped \
 # Linux VPS → linux-amd64 | Raspberry Pi → linux-arm64
 ```
 
-📦 [All release binaries](https://github.com/luqman-v1/9router-go/releases/latest) • 🔨 [Build from source](#-setup-guide)
+📦 [Original upstream release binaries](https://github.com/luqman-v1/9router-go/releases/latest) • 🔨 [Build from source](#-setup-guide)
 
 ---
 
@@ -231,16 +235,16 @@ Full schema, operator contract, and multi-process limits: [`DATABASE.md`](DATABA
 
 ### Release binary
 
-Download from [GitHub Releases](https://github.com/luqman-v1/9router-go/releases/latest), verify against `SHA256SUMS.txt`.
+Download from this fork's [GitHub Releases](https://github.com/TahsinArafat/9router-go-sleepy/releases/latest), verify against `SHA256SUMS.txt`. No fork release has been published yet.
 
 ### 🧪 Experimental builds
 
 Unreleased work also ships as **experimental** builds. They are published
 separately and are never offered to a normal install:
 
-- GitHub Releases marks them **Pre-release**, so `releases/latest` — the URL
+- The upstream GitHub Releases marks them **Pre-release**, so `releases/latest` — the URL
   `9router-go update` falls back to — keeps pointing at the stable version.
-- Docker Hub tags them `exp` (`luqmenul/9router-go:exp`), never `latest`.
+- The upstream Docker Hub tags them `exp` (`luqmenul/9router-go:exp`), never `latest`.
 
 ```bash
 docker pull luqmenul/9router-go:exp
@@ -248,7 +252,7 @@ docker pull luqmenul/9router-go:exp
 
 Opt in only if you want to help shake out bugs. `9router-go update` will not
 install one over a stable release — grab the asset for your platform from the
-[pre-releases page](https://github.com/luqman-v1/9router-go/releases) and
+[upstream pre-releases page](https://github.com/luqman-v1/9router-go/releases) and
 replace the running binary with it.
 
 ### Build from source
@@ -256,11 +260,14 @@ replace the running binary with it.
 Prerequisites: Go 1.27 and Bun 1.x (dashboard is embedded into the binary, so build web first):
 
 ```bash
-git clone https://github.com/luqman-v1/9router-go.git
-cd 9router-go
+git clone https://github.com/TahsinArafat/9router-go-sleepy.git
+cd 9router-go-sleepy
 make web-build   # bun install --frozen-lockfile && bun run build
 make build       # embeds VERSION into the Go binary
 ```
+
+The release workflow is disabled in this personal fork. Fork builds do not
+automatically publish binaries or Docker images.
 
 ### Run
 
@@ -389,4 +396,4 @@ PRs follow the checks CI runs: `go vet ./...`, `go test -count=1 ./...`, `make t
 
 ## 📄 License
 
-MIT License — lihat [`LICENSE`](https://github.com/luqman-v1/9router-go/blob/main/LICENSE).
+MIT License — see [`LICENSE`](LICENSE). This fork preserves the upstream project's license and notices.

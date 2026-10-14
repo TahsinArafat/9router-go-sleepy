@@ -2,16 +2,17 @@ name: Release
 
 on:
   push:
-    tags:
-      - "v*"
-  workflow_dispatch:
+    # No release automation is enabled in this personal fork. This prevents
+    # inherited publishing secrets, registries, and update feeds from being
+    # used accidentally; configure fork-specific infrastructure first.
+    branches: []
 
 permissions:
   contents: write
   packages: write
 
 env:
-  REGISTRY_IMAGE: luqmenul/9router-go
+  REGISTRY_IMAGE: tahsinarafat/9router-go-sleepy
 
 jobs:
   # The release channel is derived from the tag and nothing else — not the

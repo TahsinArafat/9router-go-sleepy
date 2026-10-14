@@ -1,6 +1,6 @@
 services:
   9router-go:
-    build: .
+    image: ghcr.io/tahsinarafat/9router-go-sleepy:latest
     container_name: 9router-go
     ports:
       - "20130:20130"
@@ -9,6 +9,7 @@ services:
     environment:
       - PORT=20130
       - DATA_DIR=/data
+      - INITIAL_PASSWORD=${INITIAL_PASSWORD:?Set INITIAL_PASSWORD in .env}
       # Token saver toggles (all default off except RTK):
       # - RTK_ENABLED=true
       # - CAVEMAN_ENABLED=false

@@ -79,7 +79,7 @@ Result: Never stop coding, minimal cost + 20-40% token savings via RTK
 
 **1. Install:**
 
-This fork does not publish release binaries yet. To use its fork-specific changes, build from source using the steps in [Build from source](#build-from-source). The upstream project's current release binaries are also available if you only need the upstream version.
+The fork publishes a multi-platform Docker image to GitHub Container Registry. Fork binaries have not been published yet; for a binary, build from source using the steps in [Build from source](#build-from-source). The upstream project's release binaries are also available if you only need the upstream version.
 
 ```bash
 # Upstream macOS / Linux release binary (does not include fork-only changes)
@@ -155,12 +155,13 @@ Claude Code / Codex / OpenClaw / Cursor / Cline Settings:
 **Alternatives:**
 
 ```bash
-# Docker — no build needed
+# Fork Docker image from GHCR
+docker pull ghcr.io/tahsinarafat/9router-go-sleepy:latest
 docker run -d --name 9router-go --restart unless-stopped \
-  -p 20130:20130 -v "$HOME/.9router:/data" \
+  -p 20130:20130 -v 9router-data:/data \
   -e PORT=20130 -e DATA_DIR=/data \
   -e INITIAL_PASSWORD=your-secure-password \
-  luqmenul/9router-go:latest
+  ghcr.io/tahsinarafat/9router-go-sleepy:latest
 
 # Manual download — pick your file, no command line guesswork:
 # Windows → .exe | Mac M1+ → darwin-arm64 | Mac Intel → darwin-amd64
@@ -235,7 +236,7 @@ Full schema, operator contract, and multi-process limits: [`DATABASE.md`](DATABA
 
 ### Release binary
 
-Download from this fork's [GitHub Releases](https://github.com/TahsinArafat/9router-go-sleepy/releases/latest), verify against `SHA256SUMS.txt`. No fork release has been published yet.
+No fork release binaries are published yet. The fork Docker image is available at ghcr.io/tahsinarafat/9router-go-sleepy:latest.
 
 ### 🧪 Experimental builds
 
@@ -266,8 +267,8 @@ make web-build   # bun install --frozen-lockfile && bun run build
 make build       # embeds VERSION into the Go binary
 ```
 
-The release workflow is disabled in this personal fork. Fork builds do not
-automatically publish binaries or Docker images.
+The fork's container workflow publishes latest and short-SHA tags to GHCR when
+commits land on main. Binary and Docker Hub release publishing remains disabled.
 
 ### Run
 

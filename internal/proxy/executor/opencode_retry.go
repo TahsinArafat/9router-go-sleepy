@@ -97,49 +97,52 @@ func forwardOpenCodeWithRetry(ctx context.Context, client *http.Client, cfg *pro
 		resp, err := proxy.ForwardOpenAI(ctx, client, cfg, apiKey, body, isStream)
 
 		// A non-200 arrives as an *UpstreamError in the error position: the
-		// request layer converts the status before returning, so resp is nil
-		// here. Anything else in the error position is a transport failure,
+		// request layer converts the status before returning, so the response is
+		// nil there. Anything else in the error position is a transport failure,
 		// which the failover path owns and which must not be retried here.
+		var ue *proxy.UpstreamError
 		if err != nil {
-			var ue *proxy.UpstreamError
+			// A transport failure can still hand back a response with a partially
+			// read body; release it so the connection is not leaked.
+			if resp != nil && resp.Body != nil {
+				_ = resp.Body.Close()
+			}
 			if !errors.As(err, &ue) {
 				return openCodeUpstreamResult{err: err}
 			}
-			last = ue
-			if !isOpenCodeFreeTierRefusal(ue.StatusCode, ue.Body) {
-				return openCodeUpstreamResult{err: ue}
-			}
-			if attempt == openCodeGateMaxAttempts {
-				break
-			}
-			select {
-			case <-ctx.Done():
-				// The caller went away; report the refusal rather than sleeping
-				// through retries nobody is waiting for.
-				return openCodeUpstreamResult{err: ue}
-			case <-time.After(openCodeGateBackoff(attempt)):
-			}
-			continue
 		}
 
-		if resp.StatusCode == http.StatusOK {
+		// Success hands the body to the caller, who owns and closes it.
+		if err == nil && resp != nil && resp.StatusCode == http.StatusOK {
 			return openCodeUpstreamResult{resp: resp}
 		}
 
-		// Defensive: a non-200 response that arrived without an error is treated
-		// exactly like the error-shaped case, so the retry has one policy.
-		errBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1*1024*1024))
-		drainAndClose(resp.Body)
-		last = &proxy.UpstreamError{StatusCode: resp.StatusCode, Body: errBody, Header: resp.Header}
-		if !isOpenCodeFreeTierRefusal(resp.StatusCode, errBody) {
-			return openCodeUpstreamResult{err: last}
+		// Every path below only reports, so the body is consumed and closed
+		// here — unconditionally, and before any return.
+		if ue == nil {
+			if resp == nil || resp.Body == nil {
+				return openCodeUpstreamResult{err: &proxy.UpstreamError{
+					StatusCode: http.StatusBadGateway,
+					Body:       []byte("opencode gate returned no response"),
+				}}
+			}
+			errBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1*1024*1024))
+			_ = resp.Body.Close()
+			ue = &proxy.UpstreamError{StatusCode: resp.StatusCode, Body: errBody, Header: resp.Header}
+		}
+
+		last = ue
+		if !isOpenCodeFreeTierRefusal(ue.StatusCode, ue.Body) {
+			return openCodeUpstreamResult{err: ue}
 		}
 		if attempt == openCodeGateMaxAttempts {
 			break
 		}
 		select {
 		case <-ctx.Done():
-			return openCodeUpstreamResult{err: last}
+			// The caller went away; report the refusal rather than sleeping
+			// through retries nobody is waiting for.
+			return openCodeUpstreamResult{err: ue}
 		case <-time.After(openCodeGateBackoff(attempt)):
 		}
 	}
@@ -147,14 +150,4 @@ func forwardOpenCodeWithRetry(ctx context.Context, client *http.Client, cfg *pro
 		last = &proxy.UpstreamError{StatusCode: http.StatusForbidden, Body: []byte("opencode gate refused every attempt")}
 	}
 	return openCodeUpstreamResult{err: last}
-}
-
-// drainAndClose releases a response body so the next attempt can reuse the
-// connection instead of tearing it down and redialling.
-func drainAndClose(body io.ReadCloser) {
-	if body == nil {
-		return
-	}
-	_, _ = io.Copy(io.Discard, io.LimitReader(body, 64<<10))
-	_ = body.Close()
 }

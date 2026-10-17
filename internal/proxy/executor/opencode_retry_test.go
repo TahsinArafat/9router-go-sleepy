@@ -3,6 +3,7 @@ package executor
 import (
 	"bytes"
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -87,8 +88,8 @@ func TestForwardOpenCodeWithRetryExhaustsAndReportsLastRefusal(t *testing.T) {
 	if got := atomic.LoadInt32(calls); got != openCodeGateMaxAttempts {
 		t.Errorf("upstream saw %d attempts, want %d", got, openCodeGateMaxAttempts)
 	}
-	ue, ok := res.err.(*proxy.UpstreamError)
-	if !ok {
+	var ue *proxy.UpstreamError
+	if !errors.As(res.err, &ue) {
 		t.Fatalf("error type = %T, want an upstream error carrying the last body", res.err)
 	}
 	if ue.StatusCode != http.StatusForbidden {

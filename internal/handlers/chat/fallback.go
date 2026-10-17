@@ -186,6 +186,19 @@ func (h *ChatHandler) handleAccountFallback(
 				excludeIDs = append(excludeIDs, connObj.ID)
 				continue
 			}
+			// The OpenCode free-tier gate refuses a small, varying share of
+			// requests that carry a correct fingerprint — the executor already
+			// retried this same request five times before giving up. Cooling the
+			// account down now would mark a healthy connection unhealthy and skip
+			// it for later requests, turning a per-request lottery into an
+			// outage. The refusal says nothing about the account, so it is
+			// reported to the caller without touching the cooldown or backoff.
+			if isOpencodeFreeTierRefusal(provider, ue) {
+				log.Warn("fallback", "opencode free-tier refusal survived retries, not locking the account",
+					"conn", connObj.ID, "provider", provider, "model", model)
+				excludeIDs = append(excludeIDs, connObj.ID)
+				continue
+			}
 			// Extract error text from upstream body for classification
 			errorText := extractErrorText(ue.Body)
 			// Get current backoff level from this connection
@@ -1225,6 +1238,32 @@ func mentionsGate(lower string) bool {
 // credential failure. For model-scoped errors, only LockConnectionModel and
 // RecordConnectionError are set so that unrelated healthy models on the same account
 // remain available.
+// isOpencodeFreeTierRefusal reports whether an upstream failure is the OpenCode
+// free-tier gate's transient refusal rather than a problem with the account.
+//
+// The executor retries this same request several times before giving up, so by
+// the time it reaches here the refusal has already survived a handful of
+// independent attempts. It still says nothing about the connection: the gate
+// rejects a varying share of correctly-fingerprinted requests, and the same
+// account serves the next one. Treating it as an account fault would cool down
+// and skip a healthy connection, so this is excluded from that bookkeeping.
+//
+// The provider check keeps every other provider's 403 handling untouched, and
+// the body check keeps a genuine OpenCode auth or quota 403 on the normal path.
+func isOpencodeFreeTierRefusal(provider string, ue *upstreamError) bool {
+	switch provider {
+	case "opencode", "opencode-zen", "opencode-go":
+	default:
+		return false
+	}
+	if ue == nil || ue.StatusCode != http.StatusForbidden {
+		return false
+	}
+	// Match the error type, not the prose: the gate's message text has already
+	// been reworded once.
+	return bytes.Contains(ue.Body, []byte("FreeTierError"))
+}
+
 func isModelScopedError(statusCode int, errorText string, model string) bool {
 	if model == "" {
 		return false

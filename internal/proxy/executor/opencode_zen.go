@@ -292,14 +292,12 @@ func forwardZenChat(w http.ResponseWriter, req *Request, cleanModel, sourceForma
 	}
 	cfg.StaticHeaders = zenHeaders(&cfg, req.SessionID, true, free)
 
-	resp, err := proxy.ForwardOpenAI(reqCtx(req), req.Client, &cfg, req.APIKey, body, true)
-	if err != nil {
-		return fmt.Errorf("ForwardOpencodeZen: %w", err)
+	res := forwardOpenCodeWithRetry(reqCtx(req), req.Client, &cfg, req.APIKey, body, true)
+	if res.err != nil {
+		return res.err
 	}
+	resp := res.resp
 	defer resp.Body.Close()
-	if err := upstreamStatusError(resp); err != nil {
-		return err
-	}
 
 	if req.IsStream {
 		return execSSEStream(w, resp.Body, req)
@@ -361,14 +359,12 @@ func forwardZenResponses(w http.ResponseWriter, req *Request, cleanModel, source
 	cfg.StaticHeaders = zenHeaders(&cfg, req.SessionID, req.IsStream, free)
 
 	ctx := reqCtx(req)
-	resp, err := proxy.ForwardOpenAI(ctx, req.Client, &cfg, req.APIKey, body, req.IsStream)
-	if err != nil {
-		return fmt.Errorf("ForwardOpencodeZen (responses): %w", err)
+	res := forwardOpenCodeWithRetry(ctx, req.Client, &cfg, req.APIKey, body, req.IsStream)
+	if res.err != nil {
+		return res.err
 	}
+	resp := res.resp
 	defer resp.Body.Close()
-	if err := upstreamStatusError(resp); err != nil {
-		return err
-	}
 
 	if req.IsStream {
 		stallReader := proxy.NewStallReaderWithContext(ctx, resp.Body, 0, "opencode-zen-responses")

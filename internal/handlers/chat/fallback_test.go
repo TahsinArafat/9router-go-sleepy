@@ -415,3 +415,33 @@ func TestHandleAccountFallback_AllInCooldownReportsEarliestReset(t *testing.T) {
 		t.Errorf("expected error to contain earliest reset %s, got: %v", inTenMinutes.UTC().Format(time.RFC3339), err)
 	}
 }
+
+// The OpenCode free-tier gate refuses a varying share of correctly-fingerprinted
+// requests. By the time such a refusal reaches this layer the executor has
+// already retried it several times, so it must be reported without cooling the
+// account down — otherwise a healthy connection is skipped for later requests
+// and a per-request lottery becomes an outage.
+func TestIsOpencodeFreeTierRefusal(t *testing.T) {
+	gateBody := []byte(`{"type":"error","error":{"type":"FreeTierError","message":"OpenCode's free tier can only be used from within OpenCode."}}`)
+	cases := []struct {
+		name     string
+		provider string
+		ue       *upstreamError
+		want     bool
+	}{
+		{"zen gate refusal", "opencode-zen", &upstreamError{StatusCode: 403, Body: gateBody}, true},
+		{"free provider refusal", "opencode", &upstreamError{StatusCode: 403, Body: gateBody}, true},
+		{"go lane refusal", "opencode-go", &upstreamError{StatusCode: 403, Body: gateBody}, true},
+		{"zen real 403", "opencode-zen", &upstreamError{StatusCode: 403, Body: []byte(`{"error":{"message":"insufficient credit"}}`)}, false},
+		{"zen 401 with the token", "opencode-zen", &upstreamError{StatusCode: 401, Body: gateBody}, false},
+		{"other provider with the token", "anthropic", &upstreamError{StatusCode: 403, Body: gateBody}, false},
+		{"nil error", "opencode-zen", nil, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isOpencodeFreeTierRefusal(tc.provider, tc.ue); got != tc.want {
+				t.Errorf("isOpencodeFreeTierRefusal(%q, %+v) = %v, want %v", tc.provider, tc.ue, got, tc.want)
+			}
+		})
+	}
+}

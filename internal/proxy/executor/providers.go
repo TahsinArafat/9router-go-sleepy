@@ -628,16 +628,12 @@ func ForwardOpencode(w http.ResponseWriter, req *Request) error {
 		if ctx == nil {
 			ctx = context.Background()
 		}
-		resp, err := proxy.ForwardOpenAI(ctx, req.Client, &cfg, apiKey, transformedBody, req.IsStream)
-		if err != nil {
-			return fmt.Errorf("ForwardOpencode (muse-spark responses): %w", err)
+		res := forwardOpenCodeWithRetry(ctx, req.Client, &cfg, apiKey, transformedBody, req.IsStream)
+		if res.err != nil {
+			return res.err
 		}
+		resp := res.resp
 		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			errBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1*1024*1024))
-			return &proxy.UpstreamError{StatusCode: resp.StatusCode, Body: errBody}
-		}
 
 		if req.IsStream {
 			stallReader := proxy.NewStallReaderWithContext(ctx, resp.Body, 0, "opencode-responses")
@@ -677,16 +673,12 @@ func ForwardOpencode(w http.ResponseWriter, req *Request) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	resp, err := proxy.ForwardOpenAI(ctx, req.Client, &cfg, apiKey, body, true)
-	if err != nil {
-		return fmt.Errorf("ForwardOpencode: %w", err)
+	res := forwardOpenCodeWithRetry(ctx, req.Client, &cfg, apiKey, body, true)
+	if res.err != nil {
+		return res.err
 	}
+	resp := res.resp
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		errBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1*1024*1024))
-		return &proxy.UpstreamError{StatusCode: resp.StatusCode, Body: errBody}
-	}
 
 	if req.IsStream {
 		return execSSEStream(w, resp.Body, req)
@@ -1453,16 +1445,12 @@ func forwardOpencodeGoFree(w http.ResponseWriter, req *Request, cleanModel strin
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	resp, err := proxy.ForwardOpenAI(ctx, req.Client, &cfg, "public", body, true)
-	if err != nil {
-		return fmt.Errorf("ForwardOpencodeGo (free lane): %w", err)
+	res := forwardOpenCodeWithRetry(ctx, req.Client, &cfg, "public", body, true)
+	if res.err != nil {
+		return res.err
 	}
+	resp := res.resp
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		errBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1*1024*1024))
-		return &proxy.UpstreamError{StatusCode: resp.StatusCode, Body: errBody}
-	}
 
 	if req.IsStream {
 		return execSSEStream(w, resp.Body, req)
@@ -1550,16 +1538,12 @@ func ForwardOpencodeGo(w http.ResponseWriter, req *Request) error {
 		if ctx == nil {
 			ctx = context.Background()
 		}
-		resp, err := proxy.ForwardOpenAI(ctx, req.Client, &cfg, req.APIKey, transformedBody, req.IsStream)
-		if err != nil {
-			return fmt.Errorf("ForwardOpencodeGo (muse-spark responses): %w", err)
+		res := forwardOpenCodeWithRetry(ctx, req.Client, &cfg, req.APIKey, transformedBody, req.IsStream)
+		if res.err != nil {
+			return res.err
 		}
+		resp := res.resp
 		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			errBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1*1024*1024))
-			return &proxy.UpstreamError{StatusCode: resp.StatusCode, Body: errBody}
-		}
 
 		if req.IsStream {
 			stallReader := proxy.NewStallReaderWithContext(ctx, resp.Body, 0, "opencode-go-responses")
@@ -1645,10 +1629,11 @@ func ForwardOpencodeGo(w http.ResponseWriter, req *Request) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	resp, err := proxy.ForwardOpenAI(ctx, req.Client, &cfg, req.APIKey, body, req.IsStream)
-	if err != nil {
-		return fmt.Errorf("ForwardOpencodeGo (default route): %w", err)
+	res := forwardOpenCodeWithRetry(ctx, req.Client, &cfg, req.APIKey, body, req.IsStream)
+	if res.err != nil {
+		return res.err
 	}
+	resp := res.resp
 	defer resp.Body.Close()
 
 	if req.IsStream {

@@ -1232,12 +1232,6 @@ func mentionsGate(lower string) bool {
 		strings.Contains(lower, "endpoint is unavailable")
 }
 
-// isModelScopedError reports whether an upstream retryable error is
-// specific to the requested model (e.g. 429 model quota, 402 insufficient funds
-// for paid models, or 401 "model is not supported") rather than an account-scoped
-// credential failure. For model-scoped errors, only LockConnectionModel and
-// RecordConnectionError are set so that unrelated healthy models on the same account
-// remain available.
 // isOpencodeFreeTierRefusal reports whether an upstream failure is the OpenCode
 // free-tier gate's transient refusal rather than a problem with the account.
 //
@@ -1264,6 +1258,12 @@ func isOpencodeFreeTierRefusal(provider string, ue *upstreamError) bool {
 	return bytes.Contains(ue.Body, []byte("FreeTierError"))
 }
 
+// isModelScopedError reports whether an upstream retryable error is
+// specific to the requested model (e.g. 429 model quota, 402 insufficient funds
+// for paid models, or 401 "model is not supported") rather than an account-scoped
+// credential failure. For model-scoped errors, only LockConnectionModel and
+// RecordConnectionError are set so that unrelated healthy models on the same account
+// remain available.
 func isModelScopedError(statusCode int, errorText string, model string) bool {
 	if model == "" {
 		return false

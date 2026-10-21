@@ -872,7 +872,7 @@ func ensureMessagesFor(body []byte, provider, model string) []byte {
 	// 4. messages & system
 	if msgs, ok := reqMap["messages"].([]any); ok && len(msgs) > 0 {
 		extractedSys, claudeMsgs := convertOpenAIMessagesToClaude(msgs)
-		reqMap["messages"] = claudeMsgs
+		reqMap["messages"] = cleanupConvertedClaudeMessages(body, claudeMsgs)
 		if extractedSys != "" {
 			if existingSys, ok := reqMap["system"].(string); ok && existingSys != "" {
 				reqMap["system"] = existingSys + "\n\n" + extractedSys
@@ -1056,6 +1056,34 @@ func sanitizeToolUseID(id string, mapping map[string]string) string {
 	return newID
 }
 
+// cleanupConvertedClaudeMessages applies the Messages-API content rule to a
+// conversation this package built itself.
+//
+// The OpenAI to Claude conversion passes the client content arrays through
+// unchanged, so a turn the client left empty — or a turn that only held parts
+// this conversion drops — reaches a Claude-shaped lane as an empty content
+// array, and the provider 400s the whole request. The Claude-client path never
+// had that hole: SanitizeClaudePassthrough drops those turns. This calls the
+// same rule from the same place (translator.DropNonContentfulClaudeMessages)
+// instead of restating it, so the two paths cannot drift apart.
+//
+// intentionalPrefill is read from the body the client sent: an OpenAI caller
+// that ends on an assistant turn asked for a prefill, and the trailing-turn
+// repair must not overwrite it (translator.ClaudeIntentionalPrefill).
+//
+// A conversation the filter empties completely keeps its turns. Dropping the
+// last one would trade an invalid empty-content turn for an equally invalid
+// empty messages array, and neither shape can be answered — this way the
+// caller that emptied the turn still gets the reason the provider gives.
+func cleanupConvertedClaudeMessages(clientBody []byte, claudeMsgs []any) []any {
+	cleaned, dropped := translator.DropNonContentfulClaudeMessages(
+		claudeMsgs, translator.ClaudeIntentionalPrefill(clientBody))
+	if !dropped || len(cleaned) == 0 {
+		return claudeMsgs
+	}
+	return cleaned
+}
+
 func convertOpenAIMessagesToClaude(messages []any) (systemText string, claudeMessages []any) {
 	// Anthropic requires tool_use.id / tool_use_id to match ^[a-zA-Z0-9_-]+$.
 	// History from other upstreams (e.g. Gemini) can contain ids with other
@@ -1093,7 +1121,7 @@ func convertOpenAIMessagesToClaude(messages []any) (systemText string, claudeMes
 		if role == "tool" {
 			toolCallID, _ := msgMap["tool_call_id"].(string)
 			toolCallID = sanitizeToolUseID(toolCallID, toolIDMap)
-			contentVal := msgMap["content"]
+			contentVal := convertClaudeImageParts(msgMap["content"])
 			intermediate = append(intermediate, map[string]any{
 				"role": "user",
 				"content": []any{
@@ -1116,7 +1144,7 @@ func convertOpenAIMessagesToClaude(messages []any) (systemText string, claudeMes
 						"text": cStr,
 					})
 				} else if cArr, ok := msgMap["content"].([]any); ok && len(cArr) > 0 {
-					contentBlocks = append(contentBlocks, cArr...)
+					contentBlocks = append(contentBlocks, convertClaudeImageParts(cArr).([]any)...)
 				}
 				for _, tc := range toolCalls {
 					tcMap, ok := tc.(map[string]any)
@@ -1162,6 +1190,8 @@ func convertOpenAIMessagesToClaude(messages []any) (systemText string, claudeMes
 		intermediate = append(intermediate, claudeMessage(msgMap))
 	}
 
+	intermediate = dropImageEmptiedMessages(intermediate)
+
 	var merged []any
 	for _, m := range intermediate {
 		if len(merged) == 0 {
@@ -1194,6 +1224,13 @@ func claudeMessage(msgMap map[string]any) map[string]any {
 	for k, v := range msgMap {
 		if claudeMessageAllowedKeys[k] {
 			clean[k] = v
+		}
+	}
+	if content, has := clean["content"]; has {
+		converted := convertClaudeImageParts(content)
+		clean["content"] = converted
+		if emptiedByImageDrop(content, converted) {
+			clean[imageEmptiedMarker] = true
 		}
 	}
 	return clean

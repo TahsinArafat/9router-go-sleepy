@@ -260,10 +260,11 @@ func IsFilterEnabled(f *RTKFilter, cfg RTKConfig) bool {
 // A JSON document must never be rewritten by a prose filter. Every filter
 // reduces its input line by line, so applying one to structured output silently
 // deletes the data lines and leaves unparseable JSON behind. The per-filter
-// command patterns cannot cover it, because MatchFilter is called with an empty
-// command (rtk.go:393) and only the content patterns remain — a `gh api` body
-// containing a github.com URL matches gh.json's first content pattern and is
-// filtered as if it were prose.
+// command patterns cannot cover it: they name the command that produced the
+// body, not the shape of the body, and a command's output is not always
+// prose — `cat package.json` is a JSON document, and json-output's
+// includePatterns keep the structural lines and a few named keys, so applying
+// it deletes every other data line and the result no longer parses.
 //
 // Go's RE2 has no negative lookahead, so the two filters that document this
 // exclusion upstream (gh, kubectl) cannot express it as a single pattern.
@@ -290,9 +291,31 @@ func isStructuredOutput(text string) bool {
 }
 
 // MatchFilter finds the highest priority matching enabled filter for the given text or command.
+//
+// A filter is chosen by the command that produced the output whenever the
+// command is known: a filter that names commands was written for that
+// command's output, and matching it on content alone fires its rules on a
+// file that merely mentions what the filter keys on — a result replaced by
+// "git: already on branch", which the model has no way to account for.
+//
+// A complete JSON document is never filtered. Every filter reduces its input
+// line by line, so applying one to structured output deletes the lines no
+// includePattern matches and leaves unparseable JSON behind. The guard
+// therefore runs before every selection path: a command that names a filter
+// does not make the body prose.
 func MatchFilter(text string, command string, cfg RTKConfig) *RTKFilter {
 	filters := LoadFilters()
 	trimmedCmd := strings.TrimSpace(command)
+
+	// The guard runs before every selection path, so a command that names a
+	// filter does not make the body prose. json-output is the case that
+	// matters: it is the one filter whose command list names commands that
+	// produce JSON, and its includePatterns keep the structural lines and a
+	// few named keys, so applying it deletes every other data line and the
+	// result no longer parses.
+	if isStructuredOutput(text) {
+		return nil
+	}
 
 	// Phase 1: Try command matching if command is provided
 	if trimmedCmd != "" {
@@ -308,23 +331,26 @@ func MatchFilter(text string, command string, cfg RTKConfig) *RTKFilter {
 		}
 	}
 
-	// A JSON document is never line-filtered. RE2 has no negative lookahead, so
-	// the filters that document this exclusion upstream (gh, kubectl) cannot
-	// express it as a pattern; detection is done on the payload itself. Every
-	// filter reduces its input line by line, and json-output included — its
-	// includePatterns keep structural lines and a few named keys, so applying it
-	// deletes every other data line and the result no longer parses.
-	if isStructuredOutput(text) {
-		return nil
-	}
-
-	// Phase 2: Try pattern matching against the content
+	// Phase 2: Try pattern matching against the content.
+	//
+	// A filter that names commands was written for that command's output. When
+	// the command is known and no filter claims it, the output is not any
+	// filter's output, so matching one on content alone would rewrite text the
+	// agent asked for: a file that merely mentions "Already on" was rewritten
+	// to "git: already on branch", and the model had no way to tell. The
+	// command identifies the output; the content alone does not.
+	//
+	// When the command could not be resolved, content matching is all there is,
+	// so it stays available.
 	for _, f := range filters {
 		if !IsFilterEnabled(f, cfg) {
 			continue
 		}
 		// Skip generic-output in first pass so specific filters match first
 		if f.ID == "generic-output" {
+			continue
+		}
+		if trimmedCmd != "" && len(f.Commands) > 0 {
 			continue
 		}
 		for _, patRe := range f.Patterns {
@@ -464,12 +490,16 @@ func ApplyRTKFilter(f *RTKFilter, text string, maxLinesLimit int) (string, []str
 			headCount = len(lines) / 2
 			tailCount = len(lines) - headCount
 		}
-		head := lines[:headCount]
-		tail := lines[len(lines)-tailCount:]
-		truncMsg := fmt.Sprintf("... (%d lines truncated by %s)", len(lines)-headCount-tailCount, f.ID)
-		result := make([]string, 0, len(head)+len(tail)+1)
+		// The head and the tail are kept, and the middle is dropped — but the
+		// middle is where a single failure line usually sits, and that line is
+		// the one the agent needs. Diagnostic lines are recovered instead of
+		// dropped, so the marker reports the lines that were really lost.
+		head, preserved, tail, dropped := splitForTruncation(lines, headCount, tailCount, f)
+		truncMsg := fmt.Sprintf("... (%d lines truncated by %s)", dropped, f.ID)
+		result := make([]string, 0, len(head)+len(preserved)+len(tail)+1)
 		result = append(result, head...)
 		result = append(result, truncMsg)
+		result = append(result, preserved...)
 		result = append(result, tail...)
 		lines = result
 		techniques = append(techniques, f.ID+":truncate")

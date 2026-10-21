@@ -256,11 +256,12 @@ export interface Settings {
   outboundNoProxy?: string
   providerStrategies?: Record<string, ProviderStrategyConfig>
   /**
-   * Feature Visibility: sidebar entry ids the operator hid. The canonical id
-   * list lives in web/src/lib/nav.ts; the server only checks the shape
+   * Sidebar layout: the entry ids the operator hid, and the arrangement they
+   * moved the entries into. The canonical id list lives in web/src/lib/nav.ts;
+   * the server only checks the shape
    * (internal/handlers/dashboard/navvisibility.go).
    */
-  navVisibility?: { hidden?: string[] }
+  navVisibility?: { hidden?: string[]; order?: string[] }
   /**
    * Display currency for every cost surface. Costs themselves are stored in USD;
    * see web/src/lib/currency.ts for the catalog and the formatting rules.
@@ -486,8 +487,63 @@ export interface ProviderNode {
   urlSuffixGenerated?: boolean
   createdAt?: string
   updatedAt?: string
+  /**
+   * The node's capacity policy plus what it has spent against it. Filled by the
+   * list endpoint, so the dashboard never has to make a second call to discover
+   * what a node is currently allowed.
+   */
+  limits?: ProviderNodeLimits
 }
 
+/**
+ * ProviderNodeLimits mirrors the Go side (ProviderNodeLimitsResponse). Live
+ * figures (`rpmUsedWindow`, `activeConcurrency`) come from the gateway's own
+ * limiter and read 0 when nothing has been metered yet.
+ */
+export interface ProviderNodeLimits {
+  rpm: number
+  tpm: number
+  concurrency: number
+  tokenQuota: number
+  queueTimeoutMs: number
+  quotaResetId: number
+  contractExpiresAt?: string
+  usedTokens: number
+  expired: boolean
+  rpmUsedWindow: number
+  activeConcurrency: number
+}
+
+/**
+ * ProviderNodeLimitsPatch is the write side. Every field is optional and an
+ * omitted field keeps its stored value — sending `0` is what clears one, and the
+ * distinction is the whole reason this is a separate call from updateProviderNode.
+ */
+export interface ProviderNodeLimitsPatch {
+  rpm?: number
+  tpm?: number
+  concurrency?: number
+  tokenQuota?: number
+  queueTimeoutMs?: number
+  /** RFC3339 or a date (YYYY-MM-DD); "" clears the expiry. */
+  contractExpiresAt?: string
+}
+
+/**
+ * CustomModelBatchEntry is one line of a bulk save. Capabilities travel per entry
+ * even though the dashboard sends them uniformly for the whole paste (D10): the
+ * endpoint stays general, and a caller that already holds per-entry values is not
+ * forced to collapse them into one set.
+ */
+export interface CustomModelBatchEntry {
+  id: string
+  name?: string
+  type?: string
+  vision?: boolean
+  reasoning?: boolean
+  contextWindow?: number
+  maxOutput?: number
+}
 
 export interface SystemVersionInfo {
   currentVersion: string
@@ -557,8 +613,6 @@ export interface UsageLifetime {
   longestStreak: number
   topModel: UsageTopModel | null
   cacheHitRate: number | null
-  cacheTokens: number
-  cacheRequests: number
 }
 export interface UsageNodeHealth {
   name?: string
@@ -919,12 +973,19 @@ export function onUnauthorized(listener: UnauthorizedListener): () => void {
 let unauthorizedTimer: number | null = null
 
 export function handleUnauthorized(path?: string) {
-  // Do not redirect for public auth endpoints or if already on login page
+  // Do not redirect for public auth endpoints, for the storage stats probe, or
+  // if already on the login page. The stats probe is read-only and always
+  // admin-gated on the server, so on an install whose dashboard is open without
+  // a session it answers 401 while every other call succeeds — bouncing the
+  // operator to the login screen and clearing the stored key there was wrong;
+  // the storage card reports the 401 and offers a retry instead. A genuinely
+  // expired session still logs out through any other request.
   if (
     path === '/api/auth/login' ||
     path === '/api/auth/status' ||
     path === '/api/settings/require-login' ||
-    path === '/api/changelog'
+    path === '/api/changelog' ||
+    path === '/api/settings/database/stats'
   ) {
     return
   }
@@ -1086,6 +1147,23 @@ export const api = {
       return { supported: false, valid: false }
     }
   },
+  /**
+   * Open a throwaway browser and sign in to Gemini Web, so the session is
+   * captured without a browser that keeps running and rotating the same
+   * cookies. Answers with the cookie header to paste.
+   */
+  geminiWebBrowserLogin: async (): Promise<{ cookie: string }> =>
+    request<{ cookie: string }>('/api/providers/gemini-web/browser-login', { method: 'POST' }),
+  /**
+   * Read a session out of a browser that is already signed in, and answer with
+   * the cookie header to paste. The warning says what to do about a browser
+   * that is still running.
+   */
+  geminiWebImportChrome: async (profile?: string): Promise<{ cookie: string; warning: string }> =>
+    request<{ cookie: string; warning: string }>('/api/providers/gemini-web/import-chrome', {
+      method: 'POST',
+      body: JSON.stringify({ profile: profile ?? '' }),
+    }),
   updateConnection: (
     id: string,
     payload:
@@ -1173,6 +1251,26 @@ export const api = {
     request<{ success: boolean }>(`/api/provider-nodes/${encodeURIComponent(id)}`, {
       method: 'DELETE',
     }),
+  /**
+   * Save one node's capacity limits. Separate from updateProviderNode because
+   * that call requires name and prefix on every request: routing a limits edit
+   * through it would mean an empty field in the UI becomes a 400 for the whole
+   * save, and a limits save should never be able to rename a node.
+   */
+  setProviderNodeLimits: (id: string, patch: ProviderNodeLimitsPatch) =>
+    request<{ status: string; id: string; limits: ProviderNodeLimits }>(
+      `/api/provider-nodes/${encodeURIComponent(id)}/limits`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(patch),
+      }
+    ),
+  /** Move a node's quota mark to the end of its history. History is kept. */
+  resetProviderNodeQuota: (id: string) =>
+    request<{ status: string; id: string; quotaResetId: number; limits: ProviderNodeLimits }>(
+      `/api/provider-nodes/${encodeURIComponent(id)}/quota/reset`,
+      { method: 'POST' }
+    ),
   /** List models from a connection's upstream (compatible nodes; upstream GET /api/providers/[id]/models). */
   getConnectionModels: (connectionId: string) =>
     request<{ provider: string; connectionId: string; models: Array<{ id?: string; name?: string; model?: string } | string> }>(
@@ -1334,6 +1432,23 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ key, value }),
     }),
+  /**
+   * Save a whole pasted list of model ids in one request (D9). The response names
+   * every id it stored and every id it did not, so a partial save is visible
+   * instead of implied by a count that never came back.
+   */
+  saveCustomModelsBulk: (payload: {
+    providerAlias: string
+    type?: string
+    models: CustomModelBatchEntry[]
+  }) =>
+    request<{ status: string; added: string[]; skipped: Array<{ id: string; reason: string; code: string }> }>(
+      '/api/models/custom',
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }
+    ),
   deleteCustomModel: (key: string) =>
     request<{ success: boolean }>(`/api/models/custom/${encodeURIComponent(key)}`, {
       method: 'DELETE',
@@ -1400,11 +1515,14 @@ export const api = {
       body: JSON.stringify(settings),
     }),
   /**
-   * Reads live USD rates for the requested codes and stores the subset.
-   * `codes` is the catalog the dashboard offers (web/src/lib/currency.ts).
+   * Reads live USD rates for the requested codes and overlays them on the
+   * stored table. `codes` is the catalog the dashboard offers
+   * (web/src/lib/currency.ts), `ratesStored` counts the rates the provider
+   * answered with, and `ratesMissing` names the requested codes it did not
+   * publish, whose manual rates were kept.
    */
   refreshCurrencyRates: (payload: { code: string; showBoth: boolean; codes: string[] }) =>
-    request<{ displayCurrency: unknown; source: string; ratesStored: number }>(
+    request<{ displayCurrency: unknown; source: string; ratesStored: number; ratesMissing: string[] }>(
       '/api/settings/currency/refresh',
       {
         method: 'POST',
@@ -1680,8 +1798,11 @@ export const api = {
     ),
   /** Details-section dashboard payload: heatmap days, lifetime cards, node health. */
   getUsageDashboard: () => request<UsageDashboardResponse>('/api/usage/dashboard'),
-  getRequestDetails: (limit = 50, offset = 0) =>
-    request<any>(`/api/usage/request-details?limit=${limit}&offset=${offset}`),
+  /** Paged request rows; period windows the server query (?period=<preset|n>d|n>h). */
+  getRequestDetails: (limit = 50, offset = 0, period = '') =>
+    request<any>(
+      `/api/usage/request-details?limit=${limit}&offset=${offset}${period ? `&period=${encodeURIComponent(period)}` : ''}`
+    ),
   /** Full stored payload for one request; the list omits request/response bodies. */
   getRequestDetail: (id: string) => request<any>(`/api/usage/request-details/${encodeURIComponent(id)}`),
   resetHealth: (provider: string, model?: string) =>

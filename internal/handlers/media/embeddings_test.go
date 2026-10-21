@@ -8,10 +8,12 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 
 	"9router/proxy/internal/db"
 	"9router/proxy/internal/handlers/chat"
+	"9router/proxy/internal/providers"
 )
 
 func newTestMediaHandler(repo *db.Repo) *MediaHandler {
@@ -303,5 +305,159 @@ func TestHandleEmbeddings_ForwardStaticHeaders(t *testing.T) {
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// GitHub Copilot authenticates its embeddings endpoint with the short-lived
+// token it hands out alongside the OAuth credential, not with the stored one.
+// The request carries that token in place of the Authorization header.
+func TestHandleEmbeddings_CopilotTokenOverride(t *testing.T) {
+	var mu sync.Mutex
+	capturedHeaders := make(http.Header)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		for k, v := range r.Header {
+			capturedHeaders[k] = v
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"object":"list","data":[{"object":"embedding","index":0,"embedding":[0.1]}],"model":"text-embedding-3-small","usage":{"prompt_tokens":8,"total_tokens":8}}`))
+	}))
+	defer upstream.Close()
+
+	origCfg := providers.KnownProviders["github"]
+	testCfg := origCfg
+	testCfg.BaseURL = upstream.URL + "/embeddings"
+	providers.KnownProviders["github"] = testCfg
+	defer func() { providers.KnownProviders["github"] = origCfg }()
+
+	d, cleanup := setupMultimodalTestDB(t)
+	defer cleanup()
+	repo := db.NewRepo(d)
+	connDataJSON, _ := json.Marshal(map[string]any{
+		"apiKey": "sk-token",
+		"providerSpecificData": map[string]any{
+			"copilotToken": "tid=copilot-token-abc",
+		},
+	})
+	_ = repo.CreateProviderConnectionFull("conn-copilot-token", "github", "apikey", "Copilot Token Test", nil, string(connDataJSON))
+
+	handler := newTestMediaHandler(repo)
+	req := httptest.NewRequest("POST", "/v1/embeddings", strings.NewReader(`{"model":"github/text-embedding-3-small","input":"test"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.HandleEmbeddings(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d", rec.Code)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if auth := capturedHeaders.Get("Authorization"); auth != "Bearer tid=copilot-token-abc" {
+		t.Fatalf("expected Authorization Bearer tid=copilot-token-abc, got %q", auth)
+	}
+}
+
+// The Copilot token is a GitHub credential, and upstream sends it only from
+// the GitHub embeddings adapter. A connection for any other provider that
+// happens to carry the key must keep its own Authorization header — the token
+// used to be applied to whichever upstream the connection pointed at, which
+// replaced the connection's own key and leaked the GitHub credential.
+func TestHandleEmbeddings_CopilotTokenIgnoredForOtherProvider(t *testing.T) {
+	var mu sync.Mutex
+	capturedHeaders := make(http.Header)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		for k, v := range r.Header {
+			capturedHeaders[k] = v
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"object":"list","data":[{"object":"embedding","index":0,"embedding":[0.1]}],"model":"text-embedding-3-small"}`))
+	}))
+	defer upstream.Close()
+
+	d, cleanup := setupMultimodalTestDB(t)
+	defer cleanup()
+	repo := db.NewRepo(d)
+	connDataJSON, _ := json.Marshal(map[string]any{
+		"apiKey":  "sk-openai-own-key",
+		"baseUrl": upstream.URL + "/chat/completions",
+		"providerSpecificData": map[string]any{
+			"copilotToken": "tid=should-not-be-here",
+		},
+	})
+	if err := repo.CreateProviderConnectionFull("conn-openai-copilot-token", "openai", "apikey", "OpenAI With Stray Copilot Token", nil, string(connDataJSON)); err != nil {
+		t.Fatalf("failed to seed provider connection: %v", err)
+	}
+
+	handler := newTestMediaHandler(repo)
+	req := httptest.NewRequest("POST", "/v1/embeddings", strings.NewReader(`{"model":"openai/text-embedding-3-small","input":"test"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.HandleEmbeddings(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", rec.Code, rec.Body.String())
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if auth := capturedHeaders.Get("Authorization"); auth != "Bearer sk-openai-own-key" {
+		t.Fatalf("expected Authorization Bearer sk-openai-own-key, got %q", auth)
+	}
+}
+
+// "gh" is the published alias of the GitHub provider, so a request addressed
+// to "gh/<model>" still reaches the GitHub embeddings adapter and still
+// authenticates with the Copilot token.
+func TestHandleEmbeddings_CopilotTokenOverrideViaAlias(t *testing.T) {
+	var mu sync.Mutex
+	capturedHeaders := make(http.Header)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		for k, v := range r.Header {
+			capturedHeaders[k] = v
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"object":"list","data":[{"object":"embedding","index":0,"embedding":[0.1]}],"model":"text-embedding-3-small"}`))
+	}))
+	defer upstream.Close()
+
+	origCfg := providers.KnownProviders["github"]
+	testCfg := origCfg
+	testCfg.BaseURL = upstream.URL + "/embeddings"
+	providers.KnownProviders["github"] = testCfg
+	defer func() { providers.KnownProviders["github"] = origCfg }()
+
+	d, cleanup := setupMultimodalTestDB(t)
+	defer cleanup()
+	repo := db.NewRepo(d)
+	connDataJSON, _ := json.Marshal(map[string]any{
+		"apiKey": "sk-token",
+		"providerSpecificData": map[string]any{
+			"copilotToken": "tid=copilot-token-alias",
+		},
+	})
+	if err := repo.CreateProviderConnectionFull("conn-copilot-token-alias", "github", "apikey", "Copilot Token Alias Test", nil, string(connDataJSON)); err != nil {
+		t.Fatalf("failed to seed provider connection: %v", err)
+	}
+
+	handler := newTestMediaHandler(repo)
+	req := httptest.NewRequest("POST", "/v1/embeddings", strings.NewReader(`{"model":"gh/text-embedding-3-small","input":"test"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.HandleEmbeddings(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", rec.Code, rec.Body.String())
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if auth := capturedHeaders.Get("Authorization"); auth != "Bearer tid=copilot-token-alias" {
+		t.Fatalf("expected Authorization Bearer tid=copilot-token-alias, got %q", auth)
 	}
 }

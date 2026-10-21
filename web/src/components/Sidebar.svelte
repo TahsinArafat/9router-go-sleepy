@@ -2,7 +2,7 @@
   import { api, type SystemVersionInfo } from '../api/client'
   import { copyToClipboard } from '../lib/clipboard'
   import { TAB_ROUTES, type ActiveTab } from '../lib/router'
-  import { isNavLinkActive, visibleNavGroups } from '../lib/nav'
+  import { isNavLinkActive, orderedNavGroups } from '../lib/nav'
 
   export type { ActiveTab }
   let {
@@ -17,6 +17,7 @@
     updateInfo = $bindable(null),
     version = $bindable(''),
     hiddenNav,
+    navOrder,
   }: {
     activeTab: ActiveTab
     navigate?: (tab: ActiveTab, replace?: boolean) => void
@@ -27,6 +28,7 @@
     updateInfo?: SystemVersionInfo | null
     version?: string
     hiddenNav?: string[]
+    navOrder?: string[]
   } = $props()
   const INSTALL_CMD = '9router-go update'
   let copied = $state(false)
@@ -74,7 +76,7 @@
 
   function handleNav(tab: ActiveTab, e?: MouseEvent) {
     if (e) {
-      if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || e.button !== 0) return
+      if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || (e.button !== undefined && e.button !== 0)) return
       e.preventDefault()
     }
     navigate(tab)
@@ -83,7 +85,7 @@
 
   // The sidebar and the Settings > Sidebar switch read the same entry list
   // (web/src/lib/nav.ts), so a hidden entry is hidden in both.
-  const navGroups = $derived(visibleNavGroups(hiddenNav))
+  const navGroups = $derived(orderedNavGroups(hiddenNav, navOrder))
 </script>
 
 <aside

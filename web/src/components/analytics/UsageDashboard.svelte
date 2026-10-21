@@ -1,8 +1,6 @@
 <script lang="ts">
-  // Details-section dashboard (issue #280): lifetime cards, activity heatmap,
-  // and node health above the request-details table. Port of
-  // techysy/10router's UsageDashboard; every number obeys the unit-abbreviation
-  // switch like the Overview cards.
+  // Details-section dashboard (issue #280): activity heatmap and node health
+  // above the request-details table.
   import { onMount } from 'svelte'
   import { api, type UsageDashboardResponse, type UsageLifetime } from '../../api/client'
   import { fmtTokens } from '../../lib/compactNumber'
@@ -10,6 +8,8 @@
   import ActivityHeatmap from './ActivityHeatmap.svelte'
   import NodeHealthTable from './NodeHealthTable.svelte'
   import { isDetailsExpandedByDefault } from '../../lib/displayPrefs'
+  import { usageBlocks } from '../../lib/usagePanel.svelte'
+  import { USAGE_PANEL_FIXED_POSITION } from '../../lib/usagePanel'
 
   let data = $state<UsageDashboardResponse | null>(null)
   let loading = $state(true)
@@ -44,7 +44,10 @@
     const l: UsageLifetime | null = lifetime
     if (!l) return []
     return [
-      { label: 'Total Requests', value: l.totalRequests.toLocaleString(), valueClass: 'text-text-main' },
+      // Lifetime scope, unlike the Overview KPI of the same name, which counts
+      // the selected window only. The label says so, and the row's other cards
+      // ("Lifetime Tokens", "Peak Day Tokens") are all-time too.
+      { label: 'Lifetime Requests', value: l.totalRequests.toLocaleString(), valueClass: 'text-text-main' },
       { label: 'Lifetime Tokens', value: fmtTokens(l.totalTokens), valueClass: 'text-primary' },
       {
         label: 'Peak Day Tokens',
@@ -69,6 +72,14 @@
       },
     ]
   })
+
+  // The Details arrangement. The paged request table and the payload dialog keep
+  // fixed positions (USAGE_PANEL_FIXED_POSITION): the table is drawn by
+  // RequestDetailsTab below this stack, and the dialog is an overlay, so only the
+  // panels above the table are arranged here.
+  const detailBlocks = $derived(
+    usageBlocks('details').filter((block) => !USAGE_PANEL_FIXED_POSITION[block.ids[0]])
+  )
 </script>
 
 <div class="flex min-w-0 flex-col gap-6">
@@ -84,6 +95,8 @@
       <p class="py-6 text-center text-sm text-text-muted">Failed to load usage dashboard</p>
     </Card>
   {:else}
+    {#each detailBlocks as block (block.key)}
+      {#if block.key === 'details.lifetime'}
     {#if cards.length > 0}
       <div class="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 sm:gap-4">
         {#each cards as c (c.label)}
@@ -104,55 +117,61 @@
         {/each}
       </div>
     {/if}
+      {:else if block.key === 'details.heatmap'}
 
-    <Card padding="md" title="Activity Heatmap" icon={calIcon} action={heatmapToggle}>
+    <Card padding="none" class="overflow-hidden border border-border">
+      <div
+        class="flex flex-col gap-3 bg-surface-2 px-5 py-3 sm:flex-row sm:items-center sm:justify-between {heatmapOpen
+          ? 'border-b border-border'
+          : ''}"
+      >
+        <div class="min-w-0">
+          <h2 class="font-headline text-sm font-bold text-text-main">Activity Heatmap</h2>
+          <p class="font-body text-xs text-text-muted">Requests per day</p>
+        </div>
+        {@render panelToggle(heatmapOpen, 'Activity Heatmap', () => (heatmapOpen = !heatmapOpen))}
+      </div>
       {#if heatmapOpen}
-        <ActivityHeatmap daily={data.daily || []} currentStreak={lifetime?.currentStreak ?? 0} />
+        <div class="p-5">
+          <ActivityHeatmap daily={data.daily || []} currentStreak={lifetime?.currentStreak ?? 0} />
+        </div>
       {/if}
     </Card>
-
-    <Card padding="md" title="Node Health" icon={dnsIcon} action={healthToggle}>
+      {:else if block.key === 'details.nodeHealth'}
+    <Card padding="none" class="overflow-hidden border border-border">
+      <div
+        class="flex flex-col gap-3 bg-surface-2 px-5 py-3 sm:flex-row sm:items-center sm:justify-between {healthOpen
+          ? 'border-b border-border'
+          : ''}"
+      >
+        <div class="min-w-0">
+          <h2 class="font-headline text-sm font-bold text-text-main">Node Health</h2>
+          <p class="font-body text-xs text-text-muted">Last 7 days (≥50 real requests)</p>
+        </div>
+        {@render panelToggle(healthOpen, 'Node Health', () => (healthOpen = !healthOpen))}
+      </div>
       {#if healthOpen}
-        <p class="mb-2 text-xs text-text-muted">Last 7 days (≥50 real requests)</p>
-        <NodeHealthTable nodes={data.nodes || []} models={data.models || []} />
+        <div class="p-5">
+          <NodeHealthTable nodes={data.nodes || []} models={data.models || []} />
+        </div>
       {/if}
     </Card>
+      {/if}
+    {/each}
   {/if}
 </div>
 
-{#snippet calIcon()}
-  <span class="material-symbols-outlined text-[18px]" aria-hidden="true">calendar_month</span>
-{/snippet}
-{#snippet dnsIcon()}
-  <span class="material-symbols-outlined text-[18px]" aria-hidden="true">dns</span>
-{/snippet}
-{#snippet heatmapToggle()}
+{#snippet panelToggle(open: boolean, label: string, onToggle: () => void)}
   <button
     type="button"
-    aria-expanded={heatmapOpen}
-    aria-label="Toggle Activity Heatmap"
-    onclick={() => (heatmapOpen = !heatmapOpen)}
-    class="p-1 rounded-lg text-text-muted hover:text-text-main hover:bg-surface-2 transition-colors cursor-pointer"
+    aria-expanded={open}
+    aria-label="Toggle {label}"
+    onclick={onToggle}
+    class="shrink-0 cursor-pointer self-start rounded-lg p-1 text-text-muted transition-colors hover:bg-surface-3 hover:text-text-main focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 sm:self-auto"
   >
     <span
       class="material-symbols-outlined text-[18px] transition-transform duration-200"
-      style:transform={heatmapOpen ? 'rotate(180deg)' : 'rotate(0deg)'}
-    >
-      expand_more
-    </span>
-  </button>
-{/snippet}
-{#snippet healthToggle()}
-  <button
-    type="button"
-    aria-expanded={healthOpen}
-    aria-label="Toggle Node Health"
-    onclick={() => (healthOpen = !healthOpen)}
-    class="p-1 rounded-lg text-text-muted hover:text-text-main hover:bg-surface-2 transition-colors cursor-pointer"
-  >
-    <span
-      class="material-symbols-outlined text-[18px] transition-transform duration-200"
-      style:transform={healthOpen ? 'rotate(180deg)' : 'rotate(0deg)'}
+      style:transform={open ? 'rotate(180deg)' : 'rotate(0deg)'}
     >
       expand_more
     </span>

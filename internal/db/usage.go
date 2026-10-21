@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"time"
 )
@@ -234,37 +235,6 @@ func (r *Repo) GetUsageGroupByModelSince(since string) ([]UsageGroupRow, error) 
 	return scanUsageGroupRows(rows, "model")
 }
 
-// CacheUsageRow carries the raw fields needed to compute the cache hit rate:
-// the row's input count and its token JSON (cached/creation live inside it).
-type CacheUsageRow struct {
-	PromptTokens int
-	Tokens       string
-}
-
-// GetCacheUsageRows returns every history row whose token payload mentions a
-// cache field. The lifetime cache-hit rate is unbounded by design (it judges
-// the whole ledger), and the LIKE prefilter keeps the JSON decode off rows
-// that can never contribute.
-func (r *Repo) GetCacheUsageRows() ([]CacheUsageRow, error) {
-	rows, err := r.db.Query(`SELECT promptTokens, tokens FROM usageHistory WHERE tokens LIKE '%cache%'`) //nolint:noctx
-	if err != nil {
-		return nil, fmt.Errorf("query cache usage rows: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-	var res []CacheUsageRow
-	for rows.Next() {
-		var row CacheUsageRow
-		if err := rows.Scan(&row.PromptTokens, &row.Tokens); err != nil {
-			return nil, fmt.Errorf("scan cache usage row: %w", err)
-		}
-		res = append(res, row)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate cache usage rows: %w", err)
-	}
-	return res, nil
-}
-
 // RequestDetailPerfRow is one latency observation from the requestDetails ring.
 type RequestDetailPerfRow struct {
 	Provider string
@@ -428,23 +398,38 @@ const requestDetailListSelect = `
 	       COALESCE(json_extract(data, '$.protocol'), ''),
 	       json_valid(data)
 	FROM requestDetails
+	%s
 	ORDER BY timestamp DESC
 	LIMIT ? OFFSET ?`
 
+// requestDetailCount counts exactly the rows requestDetailListSelect would page.
+// The two share the predicate slot so a windowed page can never report a total
+// gathered from outside its window.
+const requestDetailCount = `SELECT COUNT(*) FROM requestDetails %s`
+
 // GetRequestDetailsPaged returns one page of collapsed detail rows and the
 // total number of recorded requests.
+//
+// since is the optional timestamp floor behind ?period on the Details tab; an
+// empty string reads the whole table.
 //
 // The count is not allowed to fail quietly. Reporting 0 next to a page that
 // does carry rows is the same "zero that means broken" class this reader's
 // siblings were fixed for, and it reaches the caller looking like a coherent
 // empty page.
-func (r *Repo) GetRequestDetailsPaged(limit, offset int) ([]RequestDetailListRow, int, error) {
+func (r *Repo) GetRequestDetailsPaged(ctx context.Context, limit, offset int, since string) ([]RequestDetailListRow, int, error) {
+	where := ""
+	var args []any
+	if since != "" {
+		where = "WHERE timestamp >= ?"
+		args = append(args, since)
+	}
 	var total int
-	if err := r.db.QueryRow(`SELECT COUNT(*) FROM requestDetails`).Scan(&total); err != nil {
+	if err := r.db.QueryRowContext(ctx, fmt.Sprintf(requestDetailCount, where), args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count requestDetails: %w", err)
 	}
 
-	rows, err := r.db.Query(requestDetailListSelect, limit, offset)
+	rows, err := r.db.QueryContext(ctx, fmt.Sprintf(requestDetailListSelect, where), append(args, limit, offset)...)
 	if err != nil {
 		return nil, total, fmt.Errorf("query requestDetails paged: %w", err)
 	}

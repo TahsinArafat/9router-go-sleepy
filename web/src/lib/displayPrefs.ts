@@ -13,3 +13,21 @@ export function setDetailsExpandedByDefault(on: boolean): void {
   if (typeof localStorage === 'undefined') return
   localStorage.setItem(DETAILS_EXPANDED_KEY, on ? '1' : '0')
 }
+
+// The heavy Settings blocks — the currency rate grid, the per-panel Usage list
+// with its arrangement controls, and the sidebar feature-visibility row — stay
+// folded behind the Display switch until an operator asks for them. Nothing is
+// turned off by folding them: the currency still formats every cost and the
+// arrangement still drives the Usage page, so this is a disclosure preference
+// rather than a feature flag, and it sits with the other display defaults.
+const ADVANCED_SETTINGS_KEY = 'advancedSettingsVisible'
+
+export function isAdvancedSettingsVisible(): boolean {
+  if (typeof localStorage === 'undefined') return false
+  return localStorage.getItem(ADVANCED_SETTINGS_KEY) === '1'
+}
+
+export function setAdvancedSettingsVisible(on: boolean): void {
+  if (typeof localStorage === 'undefined') return
+  localStorage.setItem(ADVANCED_SETTINGS_KEY, on ? '1' : '0')
+}

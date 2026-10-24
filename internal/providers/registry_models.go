@@ -5,8 +5,11 @@ import "strings"
 // CodexAutoPingModel is the model used to auto-ping the Codex 5h reset window.
 const CodexAutoPingModel = "gpt-5.6-terra"
 
-// CodexImagesMainModel is the main model answering Codex tool-call image requests.
-const CodexImagesMainModel = "gpt-5.6-sol"
+// CodexImagesMainModel is the main model answering Codex tool-call image
+// requests. It only drives the image_generation tool call: gpt-5.6-sol is
+// rejected for ChatGPT Go accounts ("model is not supported when using Codex
+// with a ChatGPT account"); gpt-5.6-terra is accepted (upstream b08f12d5).
+const CodexImagesMainModel = "gpt-5.6-terra"
 
 // ProviderModels maps provider aliases/IDs to their supported models in 9router.
 // Ported verbatim from open-sse/providers/registry (registry/{id}.js models arrays,
@@ -66,6 +69,8 @@ var ProviderModels = map[string][]string{
 	"comfyui":     {"flux-dev", "sdxl"},
 	"tokenharbor": {"claude-opus-5.5", "claude-sonnet-5", "gpt-6-astra", "gpt-6-sol", "grok-4.7", "mimo-v2.6-flash:free", "mimo-v2.5:free", "qwen3.8-flash:free", "deepseek-v4.1-flash:free", "deepseek-v4-flash:free"},
 	"dahl":        {"zai-org/GLM-5.3-Flash", "deepseek-ai/DeepSeek-V4-Flash-0731", "MiniMaxAI/MiniMax-M2.7"},
+	"daoxe":       {"claude-sonnet-4-6", "claude-opus-4-8", "claude-haiku-4-5-20251001", "gpt-5.5", "gpt-5.4", "gemini-3.1-pro-preview", "grok-4.5", "grok-4.3", "kimi-k2.5"},
+	"dx":          {"claude-sonnet-4-6", "claude-opus-4-8", "claude-haiku-4-5-20251001", "gpt-5.5", "gpt-5.4", "gemini-3.1-pro-preview", "grok-4.5", "grok-4.3", "kimi-k2.5"},
 	"atria":       {"Atria-Dawn-Preview"},
 	"commandcode": {"deepseek/deepseek-v4-pro", "deepseek/deepseek-v4-flash", "moonshotai/Kimi-K2.7-Code", "moonshotai/Kimi-K2.7-Code-Highspeed", "moonshotai/Kimi-K2.6", "moonshotai/Kimi-K2.5", "zai-org/GLM-5.2", "zai-org/GLM-5.2-Fast", "zai-org/GLM-5.1", "zai-org/GLM-5", "MiniMaxAI/MiniMax-M3", "MiniMaxAI/MiniMax-M2.7", "MiniMaxAI/MiniMax-M2.5", "xiaomi/mimo-v2.5-pro", "xiaomi/mimo-v2.5", "Qwen/Qwen3.6-Max-Preview", "Qwen/Qwen3.6-Plus", "Qwen/Qwen3.7-Max", "Qwen/Qwen3.7-Plus", "stepfun/Step-3.7-Flash", "stepfun/Step-3.5-Flash", "nvidia/nemotron-3-ultra-550b-a55b"},
 	"cu":          {"default", "claude-4.5-opus-high-thinking", "claude-4.5-opus-high", "claude-4.5-sonnet-thinking", "claude-4.5-sonnet", "claude-4.5-haiku", "claude-4.5-opus", "gpt-5.2-codex", "claude-4.6-opus-max", "claude-4.6-sonnet-medium-thinking", "kimi-k2.5", "gemini-3-flash-preview", "gpt-5.2", "gpt-5.3-codex"},
@@ -112,11 +117,11 @@ var ProviderModels = map[string][]string{
 		"gemini-pro", "gemini-flash", "gemini-flash-lite", "gemini-argon",
 		"gemini-3-pro", "gemini-4-argon",
 	},
-	"gh":                   {"gpt-5.2", "gpt-5.2-codex", "gpt-5.3-codex", "gpt-5.4", "gpt-5.4-mini", "claude-haiku-4.5", "claude-opus-4.5", "claude-sonnet-4.5", "claude-sonnet-4.6", "claude-opus-4.6", "claude-opus-4.7", "gemini-2.5-pro", "gemini-3-flash-preview", "gemini-3.1-pro-preview", "grok-code-fast-1", "oswe-vscode-prime", "goldeneye-free-auto", "text-embedding-3-small", "text-embedding-ada-002"},
-	"github":               {"gpt-5.2", "gpt-5.2-codex", "gpt-5.3-codex", "gpt-5.4", "gpt-5.4-mini", "claude-haiku-4.5", "claude-opus-4.5", "claude-sonnet-4.5", "claude-sonnet-4.6", "claude-opus-4.6", "claude-opus-4.7", "gemini-2.5-pro", "gemini-3-flash-preview", "gemini-3.1-pro-preview", "grok-code-fast-1", "oswe-vscode-prime", "goldeneye-free-auto", "text-embedding-3-small", "text-embedding-ada-002"},
+	"gh":                   {"gpt-5-mini", "gpt-5.3-codex", "gpt-5.4", "gpt-5.4-mini", "gpt-5.5", "gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-6-astra", "gpt-6-luna", "gpt-6-sol", "gpt-6.1-sol", "claude-fable-5", "claude-fable-5.1", "claude-haiku-4.5", "claude-haiku-5.5", "claude-opus-4.8", "claude-opus-4.8-fast", "claude-opus-5", "claude-opus-5.5", "claude-sonnet-4.6", "claude-sonnet-5", "claude-sonnet-5.5", "gemini-3.7-flash", "gemini-3.8-flash", "gemini-4-argon", "kimi-k3", "mai-code-1.1-flash", "text-embedding-3-small", "text-embedding-ada-002"},
+	"github":               {"gpt-5-mini", "gpt-5.3-codex", "gpt-5.4", "gpt-5.4-mini", "gpt-5.5", "gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-6-astra", "gpt-6-luna", "gpt-6-sol", "gpt-6.1-sol", "claude-fable-5", "claude-fable-5.1", "claude-haiku-4.5", "claude-haiku-5.5", "claude-opus-4.8", "claude-opus-4.8-fast", "claude-opus-5", "claude-opus-5.5", "claude-sonnet-4.6", "claude-sonnet-5", "claude-sonnet-5.5", "gemini-3.7-flash", "gemini-3.8-flash", "gemini-4-argon", "kimi-k3", "mai-code-1.1-flash", "text-embedding-3-small", "text-embedding-ada-002"},
 	"glm":                  {"glm-5.3", "glm-5.3-flash", "glm-5.2", "glm-5.1", "glm-5-turbo", "glm-5", "glm-4.7", "glm-4.6v"},
 	"glm-cn":               {"glm-5.3", "glm-5.3-flash", "glm-5.2", "glm-5.1", "glm-5-turbo", "glm-5", "glm-4.7", "glm-4.6v", "glm-4.6", "glm-4.5-air"},
-	"grok-cli":             {"grok-build", "grok-4.5", "grok-4.5-high", "grok-4.5-medium", "grok-4.5-low"},
+	"grok-cli":             {"grok-build", "grok-4.7", "grok-4.5", "grok-4.5-high", "grok-4.5-medium", "grok-4.5-low"},
 	"grok-web":             {"grok-3", "grok-3-mini", "grok-3-thinking", "grok-4", "grok-4-mini", "grok-4-thinking", "grok-4-heavy", "grok-4.1-mini", "grok-4.1-fast", "grok-4.1-expert", "grok-4.1-thinking", "grok-4.2"},
 	"groq":                 {"llama-3.3-70b-versatile", "meta-llama/llama-4-maverick-17b-128e-instruct", "qwen/qwen3-32b", "openai/gpt-oss-120b", "whisper-large-v3", "whisper-large-v3-turbo", "distil-whisper-large-v3-en"},
 	"gw":                   {"grok-3", "grok-3-mini", "grok-3-thinking", "grok-4", "grok-4-mini", "grok-4-thinking", "grok-4-heavy", "grok-4.1-mini", "grok-4.1-fast", "grok-4.1-expert", "grok-4.1-thinking", "grok-4.2"},
@@ -146,9 +151,11 @@ var ProviderModels = map[string][]string{
 	"muse":                 {"muse-spark-1.3", "muse-spark-1.2", "muse-spark-1.1", "muse-spark-1.3-contributor", "muse-spark-1.2-contributor"},
 	"mmf":                  {"mimo-auto"},
 	"morph":                {"morph-v3-large", "morph-v3-fast", "morph-qwen35-397b", "morph-minimax27-230b", "morph-qwen36-27b", "morph-dsv4flash"},
+	"nan":                  {"deepseek-v4-flash", "mimo-v2.5", "mimo-v2.6-flash", "qwen3.8-flash", "qwen3.6", "glm5.3", "glm5.3-flash", "gemma4"},
 	"nanobanana":           {"nanobanana-flash", "nanobanana-pro"},
 	"nb":                   {"nanobanana-flash", "nanobanana-pro"},
 	"nebius":               {"meta-llama/Llama-3.3-70B-Instruct", "Qwen/Qwen3-Embedding-8B"},
+	"nous":                 {"meituan/longcat-2.0:free", "meituan/longcat-2.5-preview:free", "stepfun/step-5-preview:free", "upstage/solar-mini4:free", "stepfun/step-3.7-flash:free", "poolside/laguna-s-2.1:free", "poolside/laguna-xs-2.1:free", "stealth/missingno"},
 	"nvidia":               {"minimaxai/minimax-m2.7", "minimaxai/minimax-m3", "z-ai/glm-5.2", "deepseek-ai/deepseek-v4-pro", "deepseek-ai/deepseek-v4-flash", "moonshotai/kimi-k2.6", "nvidia/nemotron-3-ultra-550b-a55b", "nvidia/nv-embedqa-e5-v5", "nvidia/parakeet-ctc-1.1b-asr", "fastpitch", "tacotron2"},
 	"oc":                   {"muse-spark-1.2-contributor-free", "muse-spark-1.3-contributor-free", "jev-1.13-free"},
 	"ocg":                  {"deepseek-flash", "glm-5.3-flash", "glm-5.3", "glm-5.2", "glm-5.1", "glm-5", "kimi-k2.7-code", "kimi-k2.6", "kimi-k2.5", "kimi-k3", "deepseek-v4-pro", "deepseek-v4-flash", "deepseek-v4-flash-vision-exp", "deepseek-v4.1-flash", "longcat-2.0", "mimo-v2.6-flash", "mimo-v2.6-pro", "mimo-v2.5", "mimo-v2.5-pro", "mimo-v2-pro", "mimo-v2-omni", "minimax-m3", "minimax-m2.7", "minimax-m2.5", "space-bunny-free", "qwen3.8-max", "qwen3.8-flash", "qwen3.7-max", "qwen3.7-plus", "qwen3.6-plus", "qwen3.5-plus", "hy4-preview", "hy3", "hy3-preview", "omen-alpha", "grok-4.7", "grok-4.6", "grok-4.5", "gpt-5.6-luna", "gpt-6-luna", "muse-spark-1.2-contributor", "muse-spark-1.3-contributor", "claude-haiku-5-5", "gemini-4-argon-contributor", "longcat-2.5-preview-free", "step-5-preview", "beam-free"},
@@ -159,6 +166,8 @@ var ProviderModels = map[string][]string{
 	"opencode-go":          {"deepseek-flash", "glm-5.3-flash", "glm-5.3", "glm-5.2", "glm-5.1", "glm-5", "kimi-k2.7-code", "kimi-k2.6", "kimi-k2.5", "kimi-k3", "deepseek-v4-pro", "deepseek-v4-flash", "deepseek-v4-flash-vision-exp", "deepseek-v4.1-flash", "longcat-2.0", "mimo-v2.6-flash", "mimo-v2.6-pro", "mimo-v2.5", "mimo-v2.5-pro", "mimo-v2-pro", "mimo-v2-omni", "minimax-m3", "minimax-m2.7", "minimax-m2.5", "space-bunny-free", "qwen3.8-max", "qwen3.8-flash", "qwen3.7-max", "qwen3.7-plus", "qwen3.6-plus", "qwen3.5-plus", "hy4-preview", "hy3", "hy3-preview", "omen-alpha", "grok-4.7", "grok-4.6", "grok-4.5", "gpt-5.6-luna", "gpt-6-luna", "muse-spark-1.2-contributor", "muse-spark-1.3-contributor", "claude-haiku-5-5", "gemini-4-argon-contributor", "longcat-2.5-preview-free", "step-5-preview", "beam-free"},
 	"opencode-zen":         {"claude-fable-5", "claude-fable-5-1", "claude-opus-5", "claude-opus-4-8", "claude-opus-4-7", "claude-opus-4-6", "claude-opus-4-5", "claude-sonnet-5", "claude-sonnet-4-6", "claude-sonnet-4-5", "claude-sonnet-4", "claude-haiku-4-5", "gemini-3.6-flash", "gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-3.1-pro", "gemini-3-flash", "gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5", "gpt-5.5-pro", "gpt-5.4", "gpt-5.4-pro", "gpt-5.4-mini", "gpt-5.4-nano", "gpt-5.3-codex-spark", "gpt-5.3-codex", "gpt-5.2", "gpt-5.2-codex", "gpt-5.1", "gpt-5.1-codex-max", "gpt-5.1-codex", "gpt-5.1-codex-mini", "gpt-5", "gpt-5-codex", "gpt-5-nano", "grok-build-0.1", "grok-4.6", "grok-4.5", "muse-spark-1.3", "muse-spark-1.2", "qwen3.6-plus", "qwen3.5-plus", "deepseek-v4-pro", "deepseek-v4-flash", "deepseek-v4-flash-vision-exp", "glm-5.3-flash", "glm-5.3", "glm-5.2", "glm-5.1", "glm-5", "minimax-m3", "minimax-m2.7", "minimax-m2.5", "kimi-k3", "kimi-k2.7-code", "kimi-k2.6", "kimi-k2.5", "big-pickle", "deepseek-v4-flash-free", "mimo-v2.6-flash-free", "mimo-v2.5-free", "ling-3.0-flash-fin-free", "nemotron-3-ultra-free", "nemotron-3.5-lightning-free", "muse-spark-1.3-contributor-free", "muse-spark-1.2-contributor-free", "jev-1.13", "jev-1.13-free"},
 	"openrouter":           {"openai/text-embedding-3-large", "openai/text-embedding-3-small", "openai/text-embedding-ada-002", "qwen/qwen3-embedding-8b", "perplexity/pplx-embed-v1-4b", "perplexity/pplx-embed-v1-0.6b", "nvidia/llama-nemotron-embed-vl-1b-v2:free", "openai/gpt-4o-mini-tts", "openai/tts-1-hd", "openai/tts-1", "openai/dall-e-3", "openai/gpt-image-1", "google/imagen-3.0-generate-002", "black-forest-labs/FLUX.1-schnell", "google/veo-3.1", "openai/sora-2-pro", "bytedance/seedance-2.0", "typesafe/jev-1.13"},
+	"oad":                  {"glm-4.7", "deepseek/deepseek-chat", "qwen/qwen-2.5-72b-instruct", "meta-llama/llama-3.3-70b-instruct"},
+	"openadapter":          {"glm-4.7", "deepseek/deepseek-chat", "qwen/qwen-2.5-72b-instruct", "meta-llama/llama-3.3-70b-instruct"},
 	"pa":                   {"perplexity/sonar", "openai/gpt-5.5", "openai/gpt-5.4", "openai/gpt-5.4-mini", "anthropic/claude-sonnet-4-6", "anthropic/claude-opus-4-8", "google/gemini-3.1-pro-preview", "xai/grok-4.20-reasoning", "perplexity/glm-5.2", "perplexity/kimi-k2.7-code", "nvidia/nemotron-3-super-120b-a12b"},
 	"perplexity":           {"sonar-pro", "sonar"},
 	"perplexity-agent":     {"perplexity/sonar", "openai/gpt-5.5", "openai/gpt-5.4", "openai/gpt-5.4-mini", "anthropic/claude-sonnet-4-6", "anthropic/claude-opus-4-8", "google/gemini-3.1-pro-preview", "xai/grok-4.20-reasoning", "perplexity/glm-5.2", "perplexity/kimi-k2.7-code", "nvidia/nemotron-3-super-120b-a12b"},
@@ -196,7 +205,7 @@ var ProviderModels = map[string][]string{
 	"voyage-ai":            {"voyage-3-large", "voyage-3.5", "voyage-3.5-lite", "voyage-code-3", "voyage-finance-2", "voyage-law-2", "voyage-multilingual-2"},
 	"vx":                   {"gemini-3.1-pro-preview", "gemini-3.1-flash-lite-preview", "gemini-3-flash-preview", "gemini-2.5-flash", "veo-3.1-generate-preview", "veo-3.1-fast-generate-preview", "veo-3.0-generate-001", "veo-2.0-generate-001"},
 	"vxp":                  {"deepseek-ai/deepseek-v3.2-maas", "qwen/qwen3-next-80b-a3b-thinking-maas", "qwen/qwen3-next-80b-a3b-instruct-maas", "zai-org/glm-5-maas"},
-	"xai":                  {"grok-4.6", "grok-4.5", "grok-4", "grok-4-fast-reasoning", "grok-code-fast-1", "grok-3", "grok-2-image-1212", "grok-imagine-video"},
+	"xai":                  {"grok-4.7", "grok-4.6", "grok-4.5", "grok-4", "grok-4-fast-reasoning", "grok-code-fast-1", "grok-3", "grok-2-image-1212", "grok-imagine-video"},
 	"xiaomi-mimo":          {"mimo-x-pro-preview", "mimo-x-flash-preview", "mimo-v2.5-pro", "mimo-v2.5", "mimo-v2-omni", "mimo-v2-flash", "mimo-v2.5-tts"},
 	"xiaomi-tokenplan":     {"mimo-v2.5-pro", "mimo-v2.5-pro-claude", "mimo-v2.5", "mimo-v2-pro", "mimo-v2-omni", "mimo-v2-tts", "mimo-v2.5-tts", "mimo-v2.5-tts-voiceclone", "mimo-v2.5-tts-voicedesign"},
 	"xmtp":                 {"mimo-v2.5-pro", "mimo-v2.5-pro-claude", "mimo-v2.5", "mimo-v2-pro", "mimo-v2-omni", "mimo-v2-tts", "mimo-v2.5-tts", "mimo-v2.5-tts-voiceclone", "mimo-v2.5-tts-voicedesign"},

@@ -184,6 +184,9 @@ func SetupDashboardRoutes(r chi.Router, repo *db.Repo, chatH *chat.ChatHandler) 
 	r.Post("/api/providers/validate", dashH.HandleValidateProvider)
 	r.Post("/api/providers/gemini-web/browser-login", dashH.HandleGeminiWebBrowserLogin)
 	r.Post("/api/providers/gemini-web/import-chrome", dashH.HandleGeminiWebImportChrome)
+	r.Post("/api/providers/deepseek-web/browser-login", dashH.HandleDeepSeekWebBrowserLogin)
+	r.Post("/api/providers/deepseek-web/import-chrome", dashH.HandleDeepSeekWebImportChrome)
+	r.Post("/api/connections/{id}/renew-deepseek", dashH.HandleDeepSeekWebRenew)
 	r.Put("/api/connections/{id}", dashH.HandleUpdateConnection)
 	r.Put("/api/providers/{id}", dashH.HandleUpdateConnection)
 	r.Delete("/api/connections/{id}", dashH.HandleDeleteConnection)
@@ -229,6 +232,9 @@ func SetupDashboardRoutes(r chi.Router, repo *db.Repo, chatH *chat.ChatHandler) 
 	r.Put("/api/provider-nodes/{id}/limits", dashH.HandleUpdateProviderNodeLimits)
 	r.Post("/api/provider-nodes/{id}/quota/reset", dashH.HandleResetProviderNodeQuota)
 	r.Get("/api/providers/{id}/models", dashH.HandleGetConnectionModels)
+	// Bulk removal of a node's imported models; the single-row form stays at
+	// DELETE /api/models/custom/{key}.
+	r.Delete("/api/providers/{id}/models", dashH.HandleDeleteProviderModels)
 	r.Get("/api/providers/{id}/overrides", dashH.HandleGetProviderOverrides)
 	r.Put("/api/providers/{id}/overrides", dashH.HandleSaveProviderOverrides)
 
@@ -236,7 +242,17 @@ func SetupDashboardRoutes(r chi.Router, repo *db.Repo, chatH *chat.ChatHandler) 
 	r.Post("/api/combos", dashH.HandleCreateCombo)
 	r.Post("/api/combos/auto-free", dashH.HandleAutoFreeCombo)
 	r.Post("/api/combos/auto-family", dashH.HandleAutoFamilyCombos)
+	r.Get("/api/combos/presets", dashH.HandleGetComboPresets)
+	r.Post("/api/combos/presets", dashH.HandleCreateComboPresets)
 	r.Put("/api/combos/{id}", dashH.HandleUpdateCombo)
+	// Smart select combo: dry-run a rule list, and apply every combo's rules on
+	// demand. These live here as well as in dashboard.RegisterRoutes for the
+	// same reason the node-limit pair does — that table is mounted by tests
+	// only, so a route registered there alone answers 200 in a unit test and
+	// "404 page not found" on the real server, which is exactly how the
+	// smart-rules editor shipped.
+	r.Post("/api/combos/reconcile", dashH.HandleReconcileSmartCombos)
+	r.Post("/api/combos/{id}/smart/preview", dashH.HandleComboSmartPreview)
 	r.Delete("/api/combos/{id}", dashH.HandleDeleteCombo)
 
 	r.Get("/api/proxy-pools", dashH.HandleGetProxyPools)
@@ -418,7 +434,14 @@ func mountOAuthRoutes(r interface {
 
 // SetupServerRouter mounts public endpoints (/health, /api/hello) and
 // API-key protected routes (all engine + admin routes) on the chi router.
-func SetupServerRouter(r chi.Router, repo *db.Repo, ts *TokenSaverConfig) {
+//
+// It returns the engine's chat handler: the one SetupRoutes built and the
+// dashboard group is mounted on. The auto-ping scheduler sends its pings
+// through that same instance, so a ping resolves credentials, refreshes OAuth
+// and picks an executor the way real traffic does. Returning it is what keeps
+// the gateway from building a second handler for the scheduler — see the
+// warning on SetupRoutes about the two PersistentStores.
+func SetupServerRouter(r chi.Router, repo *db.Repo, ts *TokenSaverConfig) *chat.ChatHandler {
 	// Public (unauthenticated) endpoints
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
@@ -590,4 +613,5 @@ func SetupServerRouter(r chi.Router, repo *db.Repo, ts *TokenSaverConfig) {
 	})
 
 	SetupConsoleLogRoutes(r, repo)
+	return engineChatH
 }

@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"database/sql"
+	json "encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -13,7 +14,6 @@ import (
 	"net/url"
 	"strings"
 	"time"
-	json "encoding/json/v2"
 
 	"golang.org/x/crypto/bcrypt"
 
@@ -112,6 +112,16 @@ func (h *DashboardHandler) HandleUpdateSettings(w http.ResponseWriter, r *http.R
 	// Display currency stores a code plus a rate table, so the payload is
 	// normalized here: a cost surface must never read a NaN rate (currency.go).
 	applyDisplayCurrencyUpdate(updates)
+
+	// Auto-ping schedules are merged against the stored value rather than
+	// written through: a client that sends only `connections` would otherwise
+	// delete every schedule, and one that sends only `schedules` would wipe
+	// every switch. Refused here, before the write, so a bad payload leaves
+	// the settings row untouched.
+	if err := h.mergeAutoPingSchedules(updates); err != nil {
+		handlerutil.WriteJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 
 	if err := h.Repo.UpdateSettingsRaw(updates); err != nil {
 		handlerutil.WriteJSONError(w, http.StatusInternalServerError, err.Error())
@@ -577,7 +587,7 @@ func (h *DashboardHandler) exportDatabase(ctx context.Context) (*databaseExport,
 	}
 
 	if out.Combos, err = selectRows(tx,
-		`SELECT id, name, kind, models, createdAt, updatedAt FROM combos`); err != nil {
+		`SELECT id, name, kind, models, matchRules, createdAt, updatedAt FROM combos`); err != nil {
 		return nil, err
 	}
 	for _, row := range out.Combos {
@@ -795,9 +805,13 @@ func (h *DashboardHandler) importDatabase(ctx context.Context, payload map[strin
 		if err != nil {
 			models = []byte("[]")
 		}
+		rules, err := json.Marshal(c["matchRules"])
+		if err != nil || string(rules) == "null" {
+			rules = []byte("[]")
+		}
 		if _, err := tx.Exec(
-			`INSERT OR REPLACE INTO combos(id, name, kind, models, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?)`,
-			c["id"], c["name"], stringDefault(c["kind"], nil), string(models),
+			`INSERT OR REPLACE INTO combos(id, name, kind, models, matchRules, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?, ?)`,
+			c["id"], c["name"], stringDefault(c["kind"], nil), string(models), string(rules),
 			stringDefault(c["createdAt"], nowISO()), stringDefault(c["updatedAt"], nowISO()),
 		); err != nil {
 			return nil, err

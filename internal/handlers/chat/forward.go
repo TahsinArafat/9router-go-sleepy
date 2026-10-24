@@ -38,6 +38,7 @@ func (h *ChatHandler) forwardRequest(
 	// directly for every provider without a custom executor — the assigned
 	// pool would look bound in the dashboard and never be used.
 	httpClient *http.Client,
+	provider string,
 ) error {
 	// A nil client means the caller had no connection context; the shared one
 	// is the only sensible default.
@@ -66,6 +67,11 @@ func (h *ChatHandler) forwardRequest(
 				}
 			}
 		}
+	}
+	// Nous Portal thinking dialect and attribution tags (upstream NOUS_ATTRIBUTION / PR #4770 / thinkingUnified)
+	body = providers.ApplyNousThinking(body, provider)
+	if apiKey != "" && providers.ShouldApplyNousAttribution(cfg.BaseURL) {
+		body = providers.ApplyNousAttribution(body)
 	}
 	resp, err := internalproxy.ForwardOpenAI(ctx, httpClient, cfg, apiKey, body, isStream)
 	if err != nil {
@@ -118,6 +124,21 @@ func (h *ChatHandler) handleStreamResponse(ctx context.Context, w http.ResponseW
 		// duplicate timer racing the first one to the same terminal event.
 		return executor.StreamChatToResponses(ctx, w, upstream, startTime, &metrics.TTFT, &metrics.ResponseBuf)
 	}
+
+	// Peek before the header write. A 200 whose stream opens with an error
+	// frame, an immediate EOF, keep-alives only, or a bare [DONE] carries no
+	// turn — but once `200 text/event-stream` is committed the failure can only
+	// be relayed: combo fallback is over and the account is billed and cooled
+	// down for a reply it never gave. Refusing here keeps the decision
+	// reversible, so the 502 travels back to the account/model loop.
+	//
+	// The returned reader replays the peeked bytes exactly, so a healthy stream
+	// reaches the client byte for byte.
+	_, replayed, peekErr := internalproxy.PeekFirstStreamEvent(ctx, upstream, 0)
+	if peekErr != nil {
+		return peekErr
+	}
+	upstream = replayed
 
 	hw := internalproxy.NewHeartbeatWriter(ctx, w, 0)
 	defer hw.Close()
@@ -279,19 +300,13 @@ func sseToClaudeJSON(raw []byte) ([]byte, bool) {
 					if n, ok := fn["name"].(string); ok && n != "" {
 						if existing, _ := fEntry["name"].(string); existing == "" {
 							fEntry["name"] = n
-						} else if existing != n && !strings.Contains(existing, n) {
+						} else {
 							fEntry["name"] = existing + n
 						}
 					}
 					if a, ok := fn["arguments"].(string); ok && a != "" {
 						existing, _ := fEntry["arguments"].(string)
-						if existing == "" {
-							fEntry["arguments"] = a
-						} else if existing != a && !strings.Contains(existing, a) {
-							if len(a) > 0 && !strings.HasSuffix(existing, a) {
-								fEntry["arguments"] = existing + a
-							}
-						}
+						fEntry["arguments"] = existing + a
 					}
 				}
 			}

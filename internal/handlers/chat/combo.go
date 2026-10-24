@@ -494,6 +494,31 @@ func keysString(m map[string]bool) string {
 	return strings.Join(slices.Sorted(maps.Keys(m)), ",")
 }
 
+// upstreamErrorBody renders the terminal error a combo answers with when no
+// member could serve the turn.
+//
+// The message is encoded by json.Marshal, never interpolated into a template:
+// an upstream failure routinely carries characters that are illegal raw inside
+// a JSON string — a URL that failed to parse embeds itself in quotes, a Windows
+// path carries backslashes — and a format string emits them verbatim. The
+// result is a body no client can parse: the first quote in the error text
+// closes the string early and the following backslash becomes a bare token,
+// which is what a JavaScript client reports as
+// `JSON Parse error: Unrecognized token '\'`.
+func upstreamErrorBody(message string) []byte {
+	body, err := json.Marshal(map[string]any{
+		"error": map[string]any{
+			"message": message,
+			"type":    "upstream_error",
+			"code":    http.StatusBadGateway,
+		},
+	})
+	if err != nil {
+		return []byte(`{"error":{"message":"upstream error","type":"upstream_error","code":502}}`)
+	}
+	return body
+}
+
 // handleComboFallback iterates through combo model entries, trying each one.
 // Auto-capability-switch: floats vision/pdf-capable models to the front.
 // adapterModels holds the capacity-adapter entries injected for this request;
@@ -728,7 +753,7 @@ func (h *ChatHandler) handleComboFallback(ctx context.Context, w http.ResponseWr
 						}
 						continue
 					}
-					lastErr = &upstreamError{StatusCode: http.StatusBadGateway, Body: []byte(fmt.Sprintf(`{"error":{"message":"upstream error: %v","type":"upstream_error","code":502}}`, fwdErr))}
+					lastErr = &upstreamError{StatusCode: http.StatusBadGateway, Body: upstreamErrorBody(fmt.Sprintf("upstream error: %v", fwdErr))}
 					if isKnownNoAuth {
 						break
 					}
@@ -980,7 +1005,7 @@ func (h *ChatHandler) handleMessagesComboFallback(ctx context.Context, w http.Re
 						}
 						continue
 					}
-					lastErr = &upstreamError{StatusCode: http.StatusBadGateway, Body: []byte(fmt.Sprintf(`{"error":{"message":"upstream error: %v","type":"upstream_error","code":502}}`, fwdErr))}
+					lastErr = &upstreamError{StatusCode: http.StatusBadGateway, Body: upstreamErrorBody(fmt.Sprintf("upstream error: %v", fwdErr))}
 					if isKnownNoAuth {
 						break
 					}
@@ -1039,6 +1064,17 @@ func (h *ChatHandler) comboLockRetryable(ctx context.Context, excludeIDs *[]stri
 	if connID == "" {
 		return
 	}
+	// Same contract as the single-provider failover loop: an OpenCode free-tier
+	// refusal is an egress verdict, not an account or model fault. Cooling
+	// either would park a healthy account (and, for the 429 usage-limit shape,
+	// hide it behind a quota it does not own), so the connection is only
+	// excluded for the rest of this pass and the next combo entry is tried.
+	if isOpencodeFreeTierRefusal(provider, ue) {
+		*excludeIDs = append(*excludeIDs, connID)
+		log.Warn("combo", "opencode free-tier refusal, not locking the account",
+			"provider", provider, "model", model, "conn", connID, "status", ue.StatusCode)
+		return
+	}
 	currentLevel := h.Repo.GetConnectionBackoffLevel(connID)
 	cls := providers.ClassifyError(ue.StatusCode, extractErrorText(ue.Body), currentLevel)
 	// Upstream parity (checkFallbackError): request-scoped 4xx (400/404/405/
@@ -1059,7 +1095,7 @@ func (h *ChatHandler) comboLockRetryable(ctx context.Context, excludeIDs *[]stri
 	// can skip this account before spending a request (upstream applyErrorState).
 	// Only lock if error is account-scoped, not model-scoped (e.g. 401 auth issues),
 	// so unrelated models stay available.
-	if isModelScopedError(ue.StatusCode, extractErrorText(ue.Body), model) {
+	if isModelScopedError(ue.StatusCode, extractErrorText(ue.Body), model, ue.Body) {
 		if recErr := h.Repo.RecordConnectionScopedError(connID, model, "chat", ue.StatusCode, extractErrorText(ue.Body), cls.NewBackoffLevel); recErr != nil {
 			log.Warn("combo", "record connection error failed", "conn", connID, "error", recErr)
 		}

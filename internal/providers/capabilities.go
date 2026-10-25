@@ -270,6 +270,7 @@ var modelCapabilities = map[string]Capabilities{
 	"glm-4.6v":                     {Vision: true, Reasoning: true, Tools: true, ThinkingFormat: "zai"},
 	"glm-4.5v":                     {Vision: true, VideoInput: true, Reasoning: true, Tools: true, ThinkingFormat: "zai"},
 	"deepseek-v4-flash-vision-exp": {Vision: true, Reasoning: true, Tools: true, ThinkingFormat: "deepseek"},
+	"sensenova-6.8-flash-lite":     {Vision: true, Reasoning: true, ThinkingFormat: "openai", ContextWindow: 1000000, MaxOutput: 131072},
 	"deepseek-v4-vision":           {Vision: true, Reasoning: true, Tools: true, ThinkingFormat: "deepseek", ThinkingEffortSupported: true},
 	"deepseek-v4.1-flash":          {Vision: true, Reasoning: true, Tools: true, ThinkingFormat: "deepseek"},
 	// Some gateways publish this model under the hyphenated id (dash instead
@@ -279,14 +280,29 @@ var modelCapabilities = map[string]Capabilities{
 	"deepseek-flash":                  {Vision: true, Reasoning: true, Tools: true, ThinkingFormat: "deepseek"},
 	"muse-spark-1.2-contributor-free": {Vision: true, Reasoning: true, Tools: true, ThinkingFormat: "openai"},
 	"muse-spark-1.3-contributor-free": {Vision: true, Reasoning: true, Tools: true, ThinkingFormat: "openai"},
-	"vision-model":                    {Vision: true, Reasoning: true, Tools: true, ThinkingFormat: "qwen"},
-	"coder-model":                     {Reasoning: true, Tools: true, ThinkingFormat: "qwen"},
-	"kimi-k3":                         {Vision: true, VideoInput: true, Reasoning: true, Tools: true, ThinkingFormat: "kimi", ThinkingCanDisable: new(false)},
-	"k3":                              {Vision: true, VideoInput: true, Reasoning: true, Tools: true, ThinkingFormat: "kimi", ThinkingCanDisable: new(false)},
-	"kimi-for-coding":                 {Vision: true, VideoInput: true, Reasoning: true, Tools: true, ThinkingFormat: "kimi", ThinkingCanDisable: new(false)},
-	"kimi-for-coding-highspeed":       {Vision: true, VideoInput: true, Reasoning: true, Tools: true, ThinkingFormat: "kimi", ThinkingCanDisable: new(false)},
-	"kimi-k2.7-code":                  {Vision: true, VideoInput: true, Reasoning: true, Tools: true, ThinkingFormat: "kimi", ThinkingCanDisable: new(false)},
-	"kimi-k2.7-code-highspeed":        {Vision: true, VideoInput: true, Reasoning: true, Tools: true, ThinkingFormat: "kimi", ThinkingCanDisable: new(false)},
+	// OpenCode Free ids newer than the tables above (upstream #2690): without
+	// a row they fall through to text-only defaults and the client's
+	// reasoning_effort is stripped before it reaches the upstream. Modality
+	// and limit values are taken verbatim from upstream (models.dev).
+	"space-bunny-free":          {Vision: true, VideoInput: true, Reasoning: true, ThinkingFormat: "openai", ContextWindow: 1048576, MaxOutput: 524288},
+	"space-bunny":               {Vision: true, VideoInput: true, Reasoning: true, ThinkingFormat: "openai", ContextWindow: 1048576, MaxOutput: 524288},
+	"big-pickle":                {Reasoning: true, ThinkingFormat: "openai", ContextWindow: 200000, MaxOutput: 32000},
+	"exo-free":                  {Vision: true, Reasoning: true, ThinkingFormat: "openai", ContextWindow: 1048576, MaxOutput: 131072},
+	"fledge-alpha-free":         {Vision: true, Reasoning: true, ThinkingFormat: "openai", ContextWindow: 1048576, MaxOutput: 131072},
+	"longcat-2.0":               {Reasoning: true, ThinkingFormat: "openai", ContextWindow: 1000000, MaxOutput: 131072},
+	"longcat-2.0-free":          {Reasoning: true, ThinkingFormat: "openai", ContextWindow: 1000000, MaxOutput: 131072},
+	"longcat-2.5-preview-free":  {Vision: true, Reasoning: true, ThinkingFormat: "openai", ContextWindow: 1000000, MaxOutput: 131072},
+	"north-mini-code-free":      {Reasoning: true, ThinkingFormat: "openai", ContextWindow: 256000, MaxOutput: 64000},
+	"ring-2.6-1t-free":          {Reasoning: true, ThinkingFormat: "openai", ContextWindow: 262000, MaxOutput: 66000},
+	"x-preview-f-free":          {Vision: true, VideoInput: true, Reasoning: true, ThinkingFormat: "openai", ContextWindow: 1000000, MaxOutput: 131072},
+	"vision-model":              {Vision: true, Reasoning: true, Tools: true, ThinkingFormat: "qwen"},
+	"coder-model":               {Reasoning: true, Tools: true, ThinkingFormat: "qwen"},
+	"kimi-k3":                   {Vision: true, VideoInput: true, Reasoning: true, Tools: true, ThinkingFormat: "kimi", ThinkingCanDisable: new(false)},
+	"k3":                        {Vision: true, VideoInput: true, Reasoning: true, Tools: true, ThinkingFormat: "kimi", ThinkingCanDisable: new(false)},
+	"kimi-for-coding":           {Vision: true, VideoInput: true, Reasoning: true, Tools: true, ThinkingFormat: "kimi", ThinkingCanDisable: new(false)},
+	"kimi-for-coding-highspeed": {Vision: true, VideoInput: true, Reasoning: true, Tools: true, ThinkingFormat: "kimi", ThinkingCanDisable: new(false)},
+	"kimi-k2.7-code":            {Vision: true, VideoInput: true, Reasoning: true, Tools: true, ThinkingFormat: "kimi", ThinkingCanDisable: new(false)},
+	"kimi-k2.7-code-highspeed":  {Vision: true, VideoInput: true, Reasoning: true, Tools: true, ThinkingFormat: "kimi", ThinkingCanDisable: new(false)},
 }
 
 // codexExtendedContextWindow is the context window the codex registry
@@ -312,7 +328,54 @@ var devinCLIGPTCaps = Capabilities{
 	Vision: true, Reasoning: true, Search: true, Tools: true,
 	ThinkingFormat: "openai", ContextWindow: 200000, MaxOutput: 128000,
 }
+
+// qoderCapabilities is the Qoder model capability table. The model ids are
+// opaque (dmodel, kmodel, qmodel_38max), so the name heuristics in the
+// pattern table match none of them — without this every Qoder model is
+// reported text-only and an image sent by a client is replaced by a
+// placeholder before it ever reaches the model. Context/output limits mirror
+// what /algo/api/v2/model/list reports.
+var qoderCapabilities = map[string]Capabilities{
+	// Tier aliases resolve to a variable target upstream; keep them text-only
+	// and on the default window rather than guessing.
+	"auto":      {ContextWindow: 200000, MaxOutput: 32768},
+	"efficient": {ContextWindow: 200000, MaxOutput: 32768},
+	"lite":      {ContextWindow: 200000, MaxOutput: 32768},
+	// Concrete ids read images back, so they are vision-capable.
+	"ultimate":      {Vision: true, Reasoning: true, ContextWindow: 200000, MaxOutput: 65536},
+	"performance":   {Vision: true, ContextWindow: 200000, MaxOutput: 65536},
+	"qmodel_38max":  {Vision: true, Reasoning: true, ContextWindow: 200000, MaxOutput: 65536},
+	"qmodel_latest": {Vision: true, ContextWindow: 200000, MaxOutput: 65536},
+	"qmodel":        {Vision: true, ContextWindow: 200000, MaxOutput: 65536},
+	"qfmodel":       {Vision: true, Reasoning: true, ContextWindow: 200000, MaxOutput: 65536},
+	"kmodel_latest": {Vision: true, ContextWindow: 200000, MaxOutput: 65536},
+	"kmodel":        {Vision: true, ContextWindow: 200000, MaxOutput: 65536},
+	"gmodel":        {Vision: true, Reasoning: true, ContextWindow: 200000, MaxOutput: 65536},
+	"gfmodel":       {Vision: true, Reasoning: true, ContextWindow: 200000, MaxOutput: 65536},
+	"dmodel":        {Vision: true, Reasoning: true, ContextWindow: 200000, MaxOutput: 65536},
+	"dfmodel":       {Vision: true, Reasoning: true, ContextWindow: 200000, MaxOutput: 65536},
+	"mmodel":        {Vision: true, ContextWindow: 200000, MaxOutput: 65536},
+	// Frontier reasoning pair; absent from many per-account catalogs, so they
+	// are routed through a static model_config.
+	"smodel": {Vision: true, Reasoning: true, ContextWindow: 180000, MaxOutput: 65536},
+	"cmodel": {Vision: true, Reasoning: true, ContextWindow: 180000, MaxOutput: 65536},
+}
+
 var providerCapabilities = map[string]map[string]Capabilities{
+	"qoder": qoderCapabilities,
+	// Qoder CN serves the identical model catalog from the CN gateway, so it
+	// shares the intl Qoder capability table verbatim.
+	"qoder-cn": qoderCapabilities,
+	// OpenCode Free (oc): the free lane's MiMo route is OpenRouter-backed and
+	// takes the plain OpenAI reasoning_effort enum verbatim ("none" really
+	// drops thinking). The global *mimo*v2.6* pattern describes Xiaomi's own
+	// API (DeepSeek-shaped thinking object, always on), which this lane
+	// ignores: thinking.type:disabled still streamed reasoning. Limits repeat
+	// the family pattern deliberately: the synced catalog carries no opencode
+	// limit delta for this id, so 1M/131k is what the lane already published.
+	"opencode": {
+		"mimo-v2.6-flash-free": {Vision: true, AudioInput: true, VideoInput: true, Reasoning: true, ThinkingFormat: "openai", ThinkingCanDisable: new(true), ContextWindow: 1048576, MaxOutput: 131072},
+	},
 	"nvidia": {
 		"minimaxai/minimax-m2.7":        {Reasoning: true, Tools: true, ThinkingFormat: "openai", ThinkingCanDisable: new(false)},
 		"minimaxai/minimax-m3":          {Vision: true, Reasoning: true, Tools: true, ThinkingFormat: "openai", ThinkingCanDisable: new(false)},

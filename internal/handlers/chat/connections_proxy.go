@@ -335,32 +335,54 @@ func (h *ChatHandler) selectProxyURL(connData *ConnectionData, pool *db.ProxyPoo
 	}
 
 	now := time.Now()
-	// Bounded by the pool size, which is itself operator-supplied: a pool with
-	// thousands of URLs must not turn one request into thousands of lookups.
-	//
-	// One draw beyond the pool size, because NextURL advances its cursor BEFORE
-	// reading: a pool of N returns each URL once per N calls but starts
-	// mid-cycle, so a loop of exactly N can revisit a URL and never reach
-	// another — reporting the pool exhausted while untried proxies remained.
 	urls := pool.URLs
-	for i := 0; i <= len(urls); i++ {
-		candidate := pool.NextURL()
-		if refused[candidate] {
-			continue
+
+	// Pass 1: prefer a URL that is neither spent this turn nor cooling down.
+	if !refuseOnly && provider != "" && hasProxyCooldownSupport(provider) {
+		for i := 0; i <= len(urls); i++ {
+			candidate := pool.NextURL()
+			if refused[candidate] || proxyCoolingDown(provider, candidate, now) {
+				continue
+			}
+			return candidate
 		}
-		if !refuseOnly && provider != "" && hasProxyCooldownSupport(provider) && proxyCoolingDown(provider, candidate, now) {
-			continue
-		}
-		return candidate
 	}
 
-	// This turn spent every proxy it was offered. Reporting "" lets the caller
-	// distinguish "this pool is exhausted for the turn" from "this request could
-	// not be routed", which a non-empty URL would blur.
+	// Pass 2: if every remaining URL is cooling (or refuseOnly is true), still
+	// return any unrefused URL rather than aborting with "".
+	for i := 0; i <= len(urls); i++ {
+		candidate := pool.NextURL()
+		if !refused[candidate] {
+			return candidate
+		}
+	}
+
+	// Every URL in this pool was refused during this turn.
 	if len(refused) > 0 {
 		return ""
 	}
 	return pool.NextURL()
+}
+
+// poolHasUnrefusedURL reports whether pool holds at least one URL not yet
+// refused during the current turn, without advancing pool's round-robin cursor.
+func poolHasUnrefusedURL(connData *ConnectionData, pool *db.ProxyPool) bool {
+	if pool == nil || !pool.IsActive || len(pool.URLs) == 0 {
+		return false
+	}
+	if connData == nil {
+		return true
+	}
+	refused := connData.RefusedProxies[connData.ProxyPoolID]
+	if len(refused) == 0 {
+		return true
+	}
+	for _, u := range pool.URLs {
+		if !refused[u] {
+			return true
+		}
+	}
+	return false
 }
 
 // poolHasCoolingProxy reports whether any proxy in the pool is currently parked

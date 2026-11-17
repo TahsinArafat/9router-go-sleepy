@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"9router/proxy/internal/db"
 	"9router/proxy/internal/log"
 )
 
@@ -27,7 +28,12 @@ import (
 // pool that keeps rotating through distinct URLs would grow the map between
 // reads, so the size is capped as well (AGENTS.md §4.G: bound everything that
 // grows).
-const proxyCooldownEntries = 512
+const proxyCooldownEntries = 2048
+
+// deadProxyCooldown parks a proxy socket that failed at the transport/dial
+// layer (connection refused, SOCKS handshake failure, dial timeout) so
+// subsequent requests skip dead endpoints instead of re-dialling them.
+const deadProxyCooldown = 5 * time.Minute
 
 // openCodeProxyMaxCooldown is the ceiling for an OpenCode free-tier refusal
 // parked against one proxy.
@@ -84,6 +90,7 @@ type proxyCooldownEntry struct {
 var (
 	proxyCooldownsMu sync.Mutex
 	proxyCooldowns   = make(map[string]proxyCooldownEntry, proxyCooldownEntries)
+	poolCooldowns    = make(map[string]proxyCooldownEntry, proxyCooldownEntries)
 )
 
 // proxyCooldownKey is the map key. The separator cannot appear in a provider id
@@ -185,6 +192,7 @@ func resetProxyCooldownsForTest() {
 	proxyCooldownsMu.Lock()
 	defer proxyCooldownsMu.Unlock()
 	proxyCooldowns = make(map[string]proxyCooldownEntry, proxyCooldownEntries)
+	poolCooldowns = make(map[string]proxyCooldownEntry, proxyCooldownEntries)
 }
 
 // ResetProxyCooldownsForTesting clears the provider/proxy cooldowns.
@@ -243,4 +251,106 @@ func parkRefusedProxy(provider string, connData *ConnectionData, ue *upstreamErr
 	log.Warn("proxy", "proxy parked for provider after refusal",
 		"provider", provider, "proxy", redactProxyURL(proxyURL),
 		"pool", connData.ProxyPoolID, "cooldown", wait)
+}
+
+// poolCoolingDown reports whether every URL in poolID is currently parked for
+// provider. Checked in-memory during multi-pool rotation so new requests skip
+// exhausted single-URL pools ("Imported ...") with zero SQLite queries.
+func poolCoolingDown(provider, poolID string, now time.Time) bool {
+	if poolID == "" {
+		return false
+	}
+	key := proxyCooldownKey(provider, poolID)
+	proxyCooldownsMu.Lock()
+	defer proxyCooldownsMu.Unlock()
+	e, ok := poolCooldowns[key]
+	if !ok {
+		return false
+	}
+	if !now.Before(e.until) {
+		delete(poolCooldowns, key)
+		return false
+	}
+	return true
+}
+
+// syncPoolCooldown parks pool.ID in poolCooldowns when every URL in pool.URLs
+// is currently cooling for provider, expiring as soon as the earliest URL
+// becomes eligible again.
+func syncPoolCooldown(provider string, pool *db.ProxyPool, now time.Time) {
+	if pool == nil || pool.ID == "" || len(pool.URLs) == 0 || !hasProxyCooldownSupport(provider) {
+		return
+	}
+	proxyCooldownsMu.Lock()
+	defer proxyCooldownsMu.Unlock()
+
+	var earliest time.Time
+	for _, u := range pool.URLs {
+		e, ok := proxyCooldowns[proxyCooldownKey(provider, u)]
+		if !ok || !now.Before(e.until) {
+			return
+		}
+		if earliest.IsZero() || e.until.Before(earliest) {
+			earliest = e.until
+		}
+	}
+	if earliest.IsZero() {
+		return
+	}
+
+	key := proxyCooldownKey(provider, pool.ID)
+	if len(poolCooldowns) >= proxyCooldownEntries {
+		for k, e := range poolCooldowns {
+			if !now.Before(e.until) {
+				delete(poolCooldowns, k)
+			}
+		}
+		if len(poolCooldowns) >= proxyCooldownEntries {
+			var oldestKey string
+			var oldest time.Time
+			for k, e := range poolCooldowns {
+				if oldestKey == "" || e.until.Before(oldest) {
+					oldestKey, oldest = k, e.until
+				}
+			}
+			if oldestKey != "" {
+				delete(poolCooldowns, oldestKey)
+			}
+		}
+	}
+	poolCooldowns[key] = proxyCooldownEntry{until: earliest}
+}
+
+// parkRefusedProxyWithPool parks the refused proxy URL and synchronises its
+// pool-level cooldown entry so multi-pool rotation skips exhausted pools.
+func parkRefusedProxyWithPool(provider string, connData *ConnectionData, pool *db.ProxyPool, ue *upstreamError) {
+	if connData == nil || !hasProxyCooldownSupport(provider) || connData.ResolvedProxyURL == "" {
+		return
+	}
+	if _, ok := retryAfterWait(ue); ok {
+		parkRefusedProxy(provider, connData, ue)
+	} else {
+		// Free-tier refusal with no Retry-After header: apply a conservative
+		// short cooldown so immediate subsequent requests prefer healthy pools.
+		now := time.Now()
+		parkProxyCooling(provider, connData.ResolvedProxyURL, deadProxyCooldown, now)
+		log.Warn("proxy", "proxy parked for provider after refusal (default window)",
+			"provider", provider, "proxy", redactProxyURL(connData.ResolvedProxyURL),
+			"pool", connData.ProxyPoolID, "cooldown", deadProxyCooldown)
+	}
+	syncPoolCooldown(provider, pool, time.Now())
+}
+
+// parkDeadProxyWithPool parks an unreachable/broken proxy socket for a short
+// transport cooldown so subsequent requests do not keep stalling on it.
+func parkDeadProxyWithPool(provider string, connData *ConnectionData, pool *db.ProxyPool) {
+	if connData == nil || !hasProxyCooldownSupport(provider) || connData.ResolvedProxyURL == "" {
+		return
+	}
+	now := time.Now()
+	parkProxyCooling(provider, connData.ResolvedProxyURL, deadProxyCooldown, now)
+	syncPoolCooldown(provider, pool, now)
+	log.Warn("proxy", "proxy parked after transport failure",
+		"provider", provider, "proxy", redactProxyURL(connData.ResolvedProxyURL),
+		"pool", connData.ProxyPoolID, "cooldown", deadProxyCooldown)
 }

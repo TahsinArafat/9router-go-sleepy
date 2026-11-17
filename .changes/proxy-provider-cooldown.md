@@ -36,7 +36,7 @@ said which egress had served a turn either.
   service, and falling back to the direct client would publish the host's real
   IP — both worse than trying a proxy the gate may have reopened.
 - **The egress label names the proxy.** `resolveEgress` now carries the
-  redacted proxy URL, so a usage row reads `Rot20 (socks5://***@103.17.36.55:30259)`
+  redacted proxy URL, so a usage row reads `Rot20 (socks5://***@198.51.100.11:30259)`
   instead of just `Rot20`. Credentials are stripped before the label is built:
   a pool of twenty proxies carries twenty passwords, and this string lands on
   every usage row and every fallback log line.

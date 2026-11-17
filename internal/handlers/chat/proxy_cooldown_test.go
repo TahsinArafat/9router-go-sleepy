@@ -18,7 +18,7 @@ func TestProxyCooldownIsKeyedByProvider(t *testing.T) {
 	resetProxyCooldownsForTest()
 	t.Cleanup(resetProxyCooldownsForTest)
 
-	const proxyURL = "socks5://user:pass@103.17.36.106:33951"
+	const proxyURL = "socks5://user:pass@198.51.100.10:33951"
 	now := time.Now()
 
 	parkProxyCooling("opencode", proxyURL, time.Hour, now)
@@ -42,7 +42,7 @@ func TestProxyCooldownExpires(t *testing.T) {
 	resetProxyCooldownsForTest()
 	t.Cleanup(resetProxyCooldownsForTest)
 
-	const proxyURL = "socks5://user:pass@103.17.36.106:33951"
+	const proxyURL = "socks5://user:pass@198.51.100.10:33951"
 	now := time.Now()
 
 	parkProxyCooling("opencode", proxyURL, time.Minute, now)
@@ -60,7 +60,7 @@ func TestProxyCooldownIgnoresZeroWindow(t *testing.T) {
 	resetProxyCooldownsForTest()
 	t.Cleanup(resetProxyCooldownsForTest)
 
-	const proxyURL = "socks5://user:pass@103.17.36.106:33951"
+	const proxyURL = "socks5://user:pass@198.51.100.10:33951"
 	now := time.Now()
 
 	parkProxyCooling("opencode", proxyURL, 0, now)
@@ -81,7 +81,7 @@ func TestProxyCooldownExtendsNeverShortens(t *testing.T) {
 	resetProxyCooldownsForTest()
 	t.Cleanup(resetProxyCooldownsForTest)
 
-	const proxyURL = "socks5://user:pass@103.17.36.106:33951"
+	const proxyURL = "socks5://user:pass@198.51.100.10:33951"
 	now := time.Now()
 
 	parkProxyCooling("opencode", proxyURL, 2*time.Hour, now)
@@ -139,8 +139,8 @@ func TestRedactProxyURL(t *testing.T) {
 	}{
 		{
 			name: "userinfo is removed",
-			in:   "socks5://ux24Mhpm:OWlehFA0nxoA@103.17.36.106:33951",
-			want: "socks5://***@103.17.36.106:33951",
+			in:   "socks5://demoUser:demoPass@198.51.100.10:33951",
+			want: "socks5://***@198.51.100.10:33951",
 		},
 		{
 			name: "username only is removed too",
@@ -210,7 +210,7 @@ func TestParkRefusedProxyUsesUpstreamWait(t *testing.T) {
 	resetProxyCooldownsForTest()
 	t.Cleanup(resetProxyCooldownsForTest)
 
-	const proxyURL = "socks5://user:pass@103.17.36.106:33951"
+	const proxyURL = "socks5://user:pass@198.51.100.10:33951"
 	now := time.Now()
 
 	ue := &upstreamError{
@@ -236,7 +236,7 @@ func TestParkRefusedProxyClampsToCeiling(t *testing.T) {
 	resetProxyCooldownsForTest()
 	t.Cleanup(resetProxyCooldownsForTest)
 
-	const proxyURL = "socks5://user:pass@103.17.36.106:33951"
+	const proxyURL = "socks5://user:pass@198.51.100.10:33951"
 	now := time.Now()
 
 	ue := &upstreamError{
@@ -342,8 +342,8 @@ func TestResolverSkipsACoolingProxyForThatProvider(t *testing.T) {
 	resetProxyCooldownsForTest()
 	t.Cleanup(resetProxyCooldownsForTest)
 
-	const refused = "socks5://user:pass@103.17.36.106:33951"
-	const healthy = "socks5://user:pass@103.17.36.55:30259"
+	const refused = "socks5://user:pass@198.51.100.10:33951"
+	const healthy = "socks5://user:pass@198.51.100.11:30259"
 
 	h, _, cleanup := newCooldownRepo(t, "cool", "socks5", []string{refused, healthy})
 	defer cleanup()
@@ -364,8 +364,8 @@ func TestResolverStillOffersTheProxyToOtherProviders(t *testing.T) {
 	resetProxyCooldownsForTest()
 	t.Cleanup(resetProxyCooldownsForTest)
 
-	const refused = "socks5://user:pass@103.17.36.106:33951"
-	const healthy = "socks5://user:pass@103.17.36.55:30259"
+	const refused = "socks5://user:pass@198.51.100.10:33951"
+	const healthy = "socks5://user:pass@198.51.100.11:30259"
 
 	h, _, cleanup := newCooldownRepo(t, "cool", "socks5", []string{refused, healthy})
 	defer cleanup()
@@ -391,8 +391,8 @@ func TestResolverFallsBackWhenEveryProxyIsCooling(t *testing.T) {
 	t.Cleanup(resetProxyCooldownsForTest)
 
 	urls := []string{
-		"socks5://user:pass@103.17.36.106:33951",
-		"socks5://user:pass@103.17.36.55:30259",
+		"socks5://user:pass@198.51.100.10:33951",
+		"socks5://user:pass@198.51.100.11:30259",
 	}
 	h, direct, cleanup := newCooldownRepo(t, "cool", "socks5", urls)
 	defer cleanup()

@@ -116,7 +116,7 @@ func (h *ChatHandler) getClientForConnection(connData *ConnectionData) (*http.Cl
 		// costs nothing, and "Vercel Relay" answers a question a UUID cannot.
 		connData.ResolvedProxyPool = pool.Name
 		// The specific URL rotation chose. A refusal has to name the egress that
-		// earned it, and with twenty proxies behind one pool the pool name says
+		// earned it, and with a hundred proxies behind one pool the pool name says
 		// nothing about which one served the turn.
 		connData.ResolvedProxyURL = proxyURLStr
 
@@ -295,34 +295,104 @@ func (h *ChatHandler) relayClient(relayURL string) *http.Client {
 	return &clone
 }
 
-// nextProxyURL picks the pool URL this request should dial, skipping any proxy
-// parked for this provider by a previous refusal.
+// nextProxyURL picks the pool URL this request should dial, skipping proxies it
+// must not use.
 //
-// Round-robin alone cannot express "not that one": NextURL is a blind modular
-// counter. A pool whose egresses have been refused one by one would keep handing
-// back a proxy the gate has already closed, and each attempt would deepen the
-// refusal.
+// Two things disqualify a proxy, and both are about one egress rather than the
+// whole pool:
 //
-// Every URL cooling is not an error. The request still has to leave, and the
-// alternatives — failing the turn or falling back to the direct client — are
-// both worse than trying a parked proxy: the first refuses service the operator
-// asked for, and the second publishes the host's real IP. So the pool degrades
-// to its ordinary rotation and the refusal path decides again.
+//   - a proxy parked by an earlier refusal (proxyCoolingDown), which outlives
+//     the request, and
+//   - a proxy this turn has already spent (RefusedProxies), which does not.
+//
+// The second is what makes a pool walkable. A pool is many egresses behind ONE
+// connection, but the account fallback loop advances over connections, so a
+// provider with one connection and a hundred proxies got exactly one attempt per
+// request: the resolver picked one URL, the gate refused it, and the turn failed
+// while ninety-nine egresses had never been tried.
+//
+// It returns "" when every proxy in the pool is spent for this turn. The caller
+// answers that with the last upstream refusal rather than an internal error, so
+// the operator sees what the gate actually said.
+//
+// Falling back to the pool's own rotation when nothing is disqualified keeps
+// every existing caller unchanged: no cooldowns and no refusals means the old
+// behaviour exactly. The same fallback covers the case where everything is
+// cooling — the request still has to leave, and going direct would publish the
+// host's real IP, which is the one thing a proxy assignment exists to prevent.
 func (h *ChatHandler) nextProxyURL(connData *ConnectionData, pool *db.ProxyPool) string {
 	provider := connData.Provider
-	if provider == "" || !hasProxyCooldownSupport(provider) {
+	refused := connData.RefusedProxies[connData.ProxyPoolID]
+
+	// Nothing to skip: the plain rotation is exactly right and costs one call.
+	if len(refused) == 0 && (provider == "" || !hasProxyCooldownSupport(provider) || !poolHasCoolingProxy(provider, pool)) {
 		return pool.NextURL()
 	}
 
 	now := time.Now()
 	// Bounded by the pool size, which is itself operator-supplied: a pool with
 	// thousands of URLs must not turn one request into thousands of lookups.
+	//
+	// One draw beyond the pool size, because NextURL advances its cursor BEFORE
+	// reading: a pool of N returns each URL once per N calls but starts
+	// mid-cycle, so a loop of exactly N can revisit a URL and never reach
+	// another — reporting the pool exhausted while untried proxies remained.
 	urls := pool.URLs
-	for i := 0; i < len(urls); i++ {
+	for i := 0; i <= len(urls); i++ {
 		candidate := pool.NextURL()
-		if !proxyCoolingDown(provider, candidate, now) {
-			return candidate
+		if refused[candidate] {
+			continue
 		}
+		if provider != "" && hasProxyCooldownSupport(provider) && proxyCoolingDown(provider, candidate, now) {
+			continue
+		}
+		return candidate
+	}
+
+	// This turn spent every proxy it was offered. Reporting "" lets the caller
+	// distinguish "this pool is exhausted for the turn" from "this request could
+	// not be routed", which a non-empty URL would blur.
+	if len(refused) > 0 {
+		return ""
 	}
 	return pool.NextURL()
+}
+
+// poolHasCoolingProxy reports whether any proxy in the pool is currently parked
+// for provider. It lets the common case — no cooldowns at all — skip the
+// scanning loop entirely, so a healthy pool costs exactly what it did before.
+func poolHasCoolingProxy(provider string, pool *db.ProxyPool) bool {
+	now := time.Now()
+	for _, u := range pool.URLs {
+		if proxyCoolingDown(provider, u, now) {
+			return true
+		}
+	}
+	return false
+}
+
+// refuseProxy records that the turn's current proxy answered with a free-tier
+// refusal, so the next selection moves to a different egress.
+//
+// Only a free-tier refusal belongs here. The gate has said "not this egress",
+// which is a fact about the proxy for this request. A dead socket or a 5xx is
+// deliberately not recorded: it may be the upstream's fault, and skipping a
+// healthy proxy over it would walk a good pool on someone else's bad afternoon.
+//
+// The map is the caller's, shared across the retry loop's iterations: connData
+// is rebuilt per attempt, so a set allocated here would be thrown away by the
+// retry that needs it.
+func refuseProxy(connData *ConnectionData) {
+	if connData == nil || connData.ResolvedProxyURL == "" || connData.ProxyPoolID == "" {
+		return
+	}
+	if connData.RefusedProxies == nil {
+		connData.RefusedProxies = make(map[string]map[string]bool)
+	}
+	set, ok := connData.RefusedProxies[connData.ProxyPoolID]
+	if !ok {
+		set = make(map[string]bool)
+		connData.RefusedProxies[connData.ProxyPoolID] = set
+	}
+	set[connData.ResolvedProxyURL] = true
 }

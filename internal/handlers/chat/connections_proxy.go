@@ -321,11 +321,16 @@ func (h *ChatHandler) relayClient(relayURL string) *http.Client {
 // cooling — the request still has to leave, and going direct would publish the
 // host's real IP, which is the one thing a proxy assignment exists to prevent.
 func (h *ChatHandler) nextProxyURL(connData *ConnectionData, pool *db.ProxyPool) string {
+	return h.selectProxyURL(connData, pool, false)
+}
+
+// selectProxyURL is nextProxyURL with the walk override.
+func (h *ChatHandler) selectProxyURL(connData *ConnectionData, pool *db.ProxyPool, refuseOnly bool) string {
 	provider := connData.Provider
 	refused := connData.RefusedProxies[connData.ProxyPoolID]
 
 	// Nothing to skip: the plain rotation is exactly right and costs one call.
-	if len(refused) == 0 && (provider == "" || !hasProxyCooldownSupport(provider) || !poolHasCoolingProxy(provider, pool)) {
+	if len(refused) == 0 && (refuseOnly || provider == "" || !hasProxyCooldownSupport(provider) || !poolHasCoolingProxy(provider, pool)) {
 		return pool.NextURL()
 	}
 
@@ -343,7 +348,7 @@ func (h *ChatHandler) nextProxyURL(connData *ConnectionData, pool *db.ProxyPool)
 		if refused[candidate] {
 			continue
 		}
-		if provider != "" && hasProxyCooldownSupport(provider) && proxyCoolingDown(provider, candidate, now) {
+		if !refuseOnly && provider != "" && hasProxyCooldownSupport(provider) && proxyCoolingDown(provider, candidate, now) {
 			continue
 		}
 		return candidate

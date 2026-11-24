@@ -1017,23 +1017,11 @@ export const BUILTIN_MODELS_BY_PROVIDER: Record<string, ProviderModel[]> = {
       "name": "Qwen3.7 Plus (ClinePass)"
     }
   ],
-  "cloudflare-ai": [
+  "cloudflare-ai":   [
     {
       "id": "@cf/cloudflare/clef-flash",
       "name": "Clef Flash",
       "kind": "systemone"
-    },
-    {
-      "id": "@cf/meta/llama-3.2-1b-instruct",
-      "name": "Llama 3.2 1B Instruct"
-    },
-    {
-      "id": "@cf/meta/llama-3.2-3b-instruct",
-      "name": "Llama 3.2 3B Instruct"
-    },
-    {
-      "id": "@cf/meta/llama-3.1-8b-instruct-fp8-fast",
-      "name": "Llama 3.1 8B Instruct FP8 Fast"
     },
     {
       "id": "@cf/meta/llama-3.1-8b-instruct-awq",
@@ -1044,32 +1032,16 @@ export const BUILTIN_MODELS_BY_PROVIDER: Record<string, ProviderModel[]> = {
       "name": "Mistral Small 3.1 24B Instruct"
     },
     {
-      "id": "@cf/meta/llama-3.1-70b-instruct-fp8-fast",
-      "name": "Llama 3.1 70B Instruct FP8 Fast"
-    },
-    {
       "id": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
       "name": "Llama 3.3 70B Instruct FP8 Fast"
-    },
-    {
-      "id": "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b",
-      "name": "DeepSeek R1 Distill Qwen 32B"
     },
     {
       "id": "@cf/moonshotai/kimi-k2.5",
       "name": "Kimi K2.5"
     },
     {
-      "id": "@cf/moonshotai/kimi-k2.6",
-      "name": "Kimi K2.6"
-    },
-    {
       "id": "@cf/zai-org/glm-4.7-flash",
       "name": "GLM 4.7 Flash"
-    },
-    {
-      "id": "@cf/qwen/qwq-32b",
-      "name": "QwQ 32B"
     },
     {
       "id": "@cf/qwen/qwen2.5-coder-32b-instruct",
@@ -1122,51 +1094,32 @@ export const BUILTIN_MODELS_BY_PROVIDER: Record<string, ProviderModel[]> = {
       "kind": "image"
     },
     {
-      "id": "@cf/bytedance/stable-diffusion-xl-lightning",
-      "name": "SDXL Lightning",
-      "params": [
-        "size"
-      ],
-      "kind": "image"
+      "id": "@cf/meta/llama-4-scout-17b-16e-instruct",
+      "name": "Llama 4 Scout 17B 16E Instruct"
     },
     {
-      "id": "@cf/lykon/dreamshaper-8-lcm",
-      "name": "DreamShaper 8 LCM",
-      "params": [
-        "size"
-      ],
-      "kind": "image"
+      "id": "@cf/deepseek-ai/deepseek-v4.1-flash-1017",
+      "name": "DeepSeek V4.1 Flash"
     },
     {
-      "id": "@cf/runwayml/stable-diffusion-v1-5-img2img",
-      "name": "Stable Diffusion v1.5 Img2Img",
-      "params": [
-        "size"
-      ],
-      "capabilities": [
-        "edit"
-      ],
-      "kind": "image"
+      "id": "@cf/google/gemma-4-26b-a4b-it",
+      "name": "Gemma 4 26B A4B IT"
     },
     {
-      "id": "@cf/runwayml/stable-diffusion-v1-5-inpainting",
-      "name": "Stable Diffusion v1.5 Inpainting",
-      "params": [
-        "size"
-      ],
-      "capabilities": [
-        "edit",
-        "mask"
-      ],
-      "kind": "image"
+      "id": "@cf/zai-org/glm-5.3",
+      "name": "GLM 5.3"
     },
     {
-      "id": "@cf/stabilityai/stable-diffusion-xl-base-1.0",
-      "name": "SDXL Base 1.0",
-      "params": [
-        "size"
-      ],
-      "kind": "image"
+      "id": "@cf/openai/gpt-oss-120b",
+      "name": "GPT OSS 120B"
+    },
+    {
+      "id": "@cf/openai/gpt-oss-20b",
+      "name": "GPT OSS 20B"
+    },
+    {
+      "id": "@cf/qwen/qwen3.8-27b",
+      "name": "Qwen 3.8 27B"
     }
   ],
   "cbcn": [
@@ -3663,6 +3616,18 @@ export const BUILTIN_MODELS_BY_PROVIDER: Record<string, ProviderModel[]> = {
     {
       "id": "k3",
       "name": "Kimi K3 (Code)"
+    },
+    {
+      "id": "k3.1-pro",
+      "name": "Kimi K3.1 Pro (Code)"
+    },
+    {
+      "id": "k3.1-pro-highspeed",
+      "name": "Kimi K3.1 Pro Highspeed (Code)"
+    },
+    {
+      "id": "kimi-k3.1-pro",
+      "name": "Kimi K3.1 Pro"
     },
     {
       "id": "kimi-for-coding",
@@ -7627,13 +7592,33 @@ export const BUILTIN_MODELS_BY_PROVIDER: Record<string, ProviderModel[]> = {
   ],
   "elevenlabs": [
     {
+      "id": "eleven_v4",
+      "name": "Eleven v4",
+      "kind": "tts"
+    },
+    {
+      "id": "eleven_v4_turbo",
+      "name": "Eleven v4 Turbo",
+      "kind": "tts"
+    },
+    {
+      "id": "eleven_flash_v2_5",
+      "name": "Eleven Flash v2.5",
+      "kind": "tts"
+    },
+    {
+      "id": "eleven_flash_v2",
+      "name": "Eleven Flash v2",
+      "kind": "tts"
+    },
+    {
       "id": "eleven_multilingual_v2",
       "name": "Eleven Multilingual v2",
       "kind": "tts"
     },
     {
-      "id": "eleven_turbo_v2_5",
-      "name": "Eleven Turbo v2.5",
+      "id": "eleven_v3",
+      "name": "Eleven v3",
       "kind": "tts"
     },
     {
@@ -7661,27 +7646,50 @@ export const BUILTIN_MODELS_BY_PROVIDER: Record<string, ProviderModel[]> = {
         "num_speakers"
       ],
       "kind": "stt"
+    },
+    {
+      "id": "scribe_v3",
+      "name": "Scribe v3",
+      "params": [
+        "language",
+        "response_format",
+        "timestamps_granularity",
+        "tag_audio_events",
+        "diarize",
+        "num_speakers"
+      ],
+      "kind": "stt"
     }
   ],
   "elevenlabs-tts-models": [
     {
-      "id": "eleven_flash_v2_5",
-      "name": "Flash v2.5 (Fastest)",
+      "id": "eleven_v4",
+      "name": "Eleven v4 (Best quality)",
       "type": "tts"
     },
     {
-      "id": "eleven_turbo_v2_5",
-      "name": "Turbo v2.5 (Fast)",
+      "id": "eleven_v4_turbo",
+      "name": "Eleven v4 Turbo (Realtime)",
+      "type": "tts"
+    },
+    {
+      "id": "eleven_flash_v2_5",
+      "name": "Flash v2.5 (Fastest, cheap)",
+      "type": "tts"
+    },
+    {
+      "id": "eleven_flash_v2",
+      "name": "Flash v2 (English)",
       "type": "tts"
     },
     {
       "id": "eleven_multilingual_v2",
-      "name": "Multilingual v2 (Quality)",
+      "name": "Multilingual v2 (Stable)",
       "type": "tts"
     },
     {
-      "id": "eleven_monolingual_v1",
-      "name": "Monolingual v1 (English)",
+      "id": "eleven_v3",
+      "name": "Eleven v3 (Previous gen)",
       "type": "tts"
     }
   ],
